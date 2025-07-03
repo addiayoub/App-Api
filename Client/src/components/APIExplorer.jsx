@@ -6,6 +6,7 @@ import {
   DollarSign, Globe, BarChart, Activity, Menu, Download
 } from 'lucide-react';
 import Header from './Header';
+import { useNavigate } from 'react-router-dom';
 
 const APIExplorer = () => {
   const [selectedAPI, setSelectedAPI] = useState(null);
@@ -20,7 +21,27 @@ const APIExplorer = () => {
   const [loadingApis, setLoadingApis] = useState(true);
   const [error, setError] = useState(null);
   const [apiData, setApiData] = useState(null); // Added missing state
+const [user, setUser] = useState(null); // État pour stocker les données utilisateur
+  const navigate = useNavigate();
 
+useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+  }, []);
+
+  // Fonction de déconnexion
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+            navigate('/');
+    
+    setApiTokens({}); // Réinitialiser les tokens API
+        window.location.reload();
+
+  };
   useEffect(() => {
     const fetchAPIs = async () => {
       try {
@@ -175,6 +196,7 @@ const transformApiData = (api, category) => {
     
     setSidebarApiData({...sidebarApiData, headers: newHeaders});
   };
+
 const executeApi = async () => {
   if (!apiTokens[sidebarApiData.id]) {
     alert(`Veuillez entrer votre token d'authentification pour exécuter cette API`);
@@ -236,6 +258,7 @@ const executeApi = async () => {
     setLoading(false);
   }
 };
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
   };
@@ -244,24 +267,28 @@ const executeApi = async () => {
     return JSON.stringify(json, null, 2);
   };
 
- const generateCurlCommand = () => {
-  if (!sidebarApiData) return '';
-  
-  let url = `${import.meta.env.VITE_PUBLIC_API_URL}${sidebarApiData.endpoint}`;
-  const params = sidebarApiData.parameters.filter(p => p.value);
-  if (params.length > 0) {
-    url += '?' + params.map(p => `${p.name}=${encodeURIComponent(p.value)}`).join('&');
-  }
+  // Fonction pour générer la commande cURL - modifiée pour utiliser apiData au lieu de sidebarApiData
+  const generateCurlCommand = (currentApiData = null) => {
+    const data = currentApiData || apiData;
+    if (!data) return '';
+    
+    let url = `${import.meta.env.VITE_PUBLIC_API_URL}${data.endpoint}`;
+    const params = data.parameters.filter(p => p.value);
+    if (params.length > 0) {
+      url += '?' + params.map(p => `${p.name}=${encodeURIComponent(p.value)}`).join('&');
+    }
 
-  let curl = `curl -X ${sidebarApiData.method} "${url}" \\\n`;
-  curl += `  -H "accept: application/json" \\\n`;
-  
-  if (apiTokens[sidebarApiData.id]) {
-    curl += `  -H "Authorization: Bearer ${apiTokens[sidebarApiData.id]}"`;
-  }
+    let curl = `curl -X ${data.method} "${url}" \\\n`;
+    curl += `  -H "accept: application/json" \\\n`;
+    
+    if (apiTokens[data.id]) {
+      curl += `  -H "Authorization: Bearer ${apiTokens[data.id]}"`;
+    } else {
+      curl += `  -H "Authorization: Bearer YOUR_API_TOKEN"`;
+    }
 
-  return curl;
-};
+    return curl;
+  };
 
   const openSidebar = () => {
     setSidebarOpen(true);
@@ -318,8 +345,7 @@ const executeApi = async () => {
 
   return (
     <div className="bg-gray-900 text-gray-100 min-h-screen">
-      <Header />
-      
+<Header user={user} onLogout={handleLogout} /> {/* Passer user et onLogout */}      
       <div className="pt-20 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
        
       </div>

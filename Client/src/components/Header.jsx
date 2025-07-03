@@ -3,35 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Settings, ChevronDown, CreditCard, HelpCircle, LogOut, Home as HomeIcon, BarChart2, Code, Database } from 'lucide-react';
 
-const Header = () => {
+const Header = ({ user, onLogout }) => { // Recevoir user et onLogout comme props
   const [isHeaderHidden, setIsHeaderHidden] = useState(false);
-  const [user, setUser] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   const lastScrollY = useRef(0);
   const ticking = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
-useEffect(() => {
-  const token = localStorage.getItem('token');
-  const storedUser = localStorage.getItem('user');
-  if (token && storedUser) {
-    try {
-      const parsedUser = JSON.parse(storedUser);
-      // Assurez-vous que l'avatar est bien présent dans l'objet utilisateur
-      if (parsedUser.avatar) {
-        setUser(parsedUser);
-      } else {
-        // Si l'avatar n'existe pas, créez un objet utilisateur avec les autres propriétés
-        setUser({
-          ...parsedUser,
-          avatar: null
-        });
-      }
-    } catch (err) {
-      console.error('Error parsing user data:', err);
-    }
-  }
-}, []);
 
   const handleScroll = useCallback(() => {
     if (!ticking.current) {
@@ -55,19 +34,57 @@ useEffect(() => {
   }, [handleScroll]);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    setIsDropdownOpen(false);
-    navigate('/');
-  }, [navigate]);
+    if (onLogout) {
+      onLogout(); // Utiliser la fonction onLogout passée en props
+    } else {
+      // Fallback si onLogout n'est pas fourni
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      setIsDropdownOpen(false);
+      navigate('/');
+    }
+  }, [navigate, onLogout]);
 
-  const navItems = [
+  const handleAvatarError = useCallback((e) => {
+    console.error('Error loading avatar:', e);
+    console.error('Avatar URL was:', user?.avatar);
+    setAvatarError(true);
+  }, [user?.avatar]);
+
+  const handleAvatarLoad = useCallback(() => {
+    console.log('Avatar loaded successfully for:', user?.name);
+    console.log('Avatar URL:', user?.avatar);
+  }, [user?.name, user?.avatar]);
+
+  // Navigation items basés sur le rôle de l'utilisateur
+  const navItems = user?.role === 'admin' ? [
+    { icon: HomeIcon, label: 'Accueil', path: '/' },
+    { icon: BarChart2, label: 'Admin Dashboard', path: '/admin' },
+    { icon: Code, label: 'API Explorer', path: '/api-explorer' },
+    { icon: Database, label: 'Documentation', path: '/docs' }
+  ] : [
     { icon: HomeIcon, label: 'Accueil', path: '/' },
     { icon: BarChart2, label: 'Dashboard', path: '/dashboard' },
     { icon: Code, label: 'API Explorer', path: '/api-explorer' },
     { icon: Database, label: 'Documentation', path: '/docs' }
   ];
+
+  const shouldShowAvatar = user?.avatar && !avatarError;
+
+  // Debug logs
+  useEffect(() => {
+    if (user) {
+      console.log('User avatar URL:', user.avatar);
+      console.log('Should show avatar:', shouldShowAvatar);
+      console.log('Avatar error state:', avatarError);
+    }
+  }, [user, shouldShowAvatar, avatarError]);
+
+  const handleNavigation = (path) => {
+    console.log('Navigating to:', path); // Debug log
+    navigate(path);
+    setIsDropdownOpen(false); // Fermer le dropdown après navigation
+  };
 
   return (
     <motion.header
@@ -81,10 +98,11 @@ useEffect(() => {
     >
       <div className="container mx-auto px-6 py-4 flex justify-between items-center">
         <motion.div 
-          className="flex items-center"
+          className="flex items-center cursor-pointer"
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
+          onClick={() => navigate('/')}
         >
           <img src="/ID&A TECH .png" alt="Logo" className="w-50" />
         </motion.div>
@@ -101,10 +119,14 @@ useEffect(() => {
                 {navItems.map((item, index) => (
                   <motion.button
                     key={index}
-                    className={`px-3 py-2 rounded-md flex items-center ${location.pathname === item.path ? 'text-blue-400 bg-gray-800' : 'text-gray-300 hover:text-white'}`}
+                    className={`px-3 py-2 rounded-md flex items-center transition-colors ${
+                      location.pathname === item.path 
+                        ? 'text-blue-400 bg-gray-800' 
+                        : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                    }`}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => navigate(item.path)}
+                    onClick={() => handleNavigation(item.path)}
                   >
                     <item.icon size={16} className="mr-2" />
                     {item.label}
@@ -119,25 +141,29 @@ useEffect(() => {
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
-                  {user.avatar ? (
+                  {shouldShowAvatar ? (
                     <img 
                       src={user.avatar} 
                       alt="User Avatar" 
-                      className="w-8 h-8 rounded-full object-cover"
+                      className="w-8 h-8 rounded-full object-cover border-2 border-blue-500/30"
+                      onError={handleAvatarError}
+                      onLoad={handleAvatarLoad}
+                      crossOrigin="anonymous"
+                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
-                      <User size={16} />
+                      <User size={16} className="text-white" />
                     </div>
                   )}
-                  <span className="text-sm font-medium">
-                    {user.name.split(' ')[0]}
+                  <span className="text-sm font-medium text-white">
+                    {user.name ? user.name.split(' ')[0] : 'User'}
                   </span>
                   <motion.div
                     animate={{ rotate: isDropdownOpen ? 180 : 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <ChevronDown size={16} />
+                    <ChevronDown size={16} className="text-gray-300" />
                   </motion.div>
                 </motion.button>
 
@@ -152,10 +178,53 @@ useEffect(() => {
                     >
                       <div className="py-1">
                         <div className="px-4 py-3 border-b border-gray-700">
-                          <p className="text-sm font-medium text-white">{user.name}</p>
-                          <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                          <div className="flex items-center space-x-3">
+                            {shouldShowAvatar ? (
+                              <img 
+                                src={user.avatar} 
+                                alt="User Avatar" 
+                                className="w-10 h-10 rounded-full object-cover border-2 border-blue-500/30"
+                                onError={handleAvatarError}
+                                onLoad={handleAvatarLoad}
+                                crossOrigin="anonymous"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+                                <User size={20} className="text-white" />
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-white">{user.name || 'Utilisateur'}</p>
+                              <p className="text-xs text-gray-400 truncate">{user.email || ''}</p>
+                              {user.role && (
+                                <p className="text-xs text-blue-400 capitalize">{user.role}</p>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
+                        {/* Navigation mobile */}
+                        <div className="md:hidden border-b border-gray-700">
+                          {navItems.map((item, index) => (
+                            <motion.button
+                              key={index}
+                              whileHover={{ x: 5 }}
+                              whileTap={{ scale: 0.98 }}
+                              className={`w-full flex items-center px-4 py-3 text-sm transition-colors ${
+                                location.pathname === item.path 
+                                  ? 'text-blue-400 bg-gray-700' 
+                                  : 'text-gray-300 hover:bg-gray-700'
+                              }`}
+                              onClick={() => handleNavigation(item.path)}
+                            >
+                              <item.icon size={16} className="mr-3" />
+                              {item.label}
+                            </motion.button>
+                          ))}
+                        </div>
+
+                        {/* Menu utilisateur */}
                         {[
                           { icon: User, label: 'Profil', path: '/profile' },
                           { icon: Settings, label: 'Paramètres', path: '/settings' },
@@ -167,10 +236,7 @@ useEffect(() => {
                             whileHover={{ x: 5 }}
                             whileTap={{ scale: 0.98 }}
                             className="w-full flex items-center px-4 py-3 text-sm text-gray-300 hover:bg-gray-700 transition-colors"
-                            onClick={() => {
-                              navigate(item.path);
-                              setIsDropdownOpen(false);
-                            }}
+                            onClick={() => handleNavigation(item.path)}
                           >
                             <item.icon size={16} className="mr-3" />
                             {item.label}

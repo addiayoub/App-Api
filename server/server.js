@@ -7,6 +7,11 @@ const cors = require('cors');
 const connectDB = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
 const planRoutes = require('./routes/planRoutes');
+const apiRoutes = require('./routes/apiRoutes');
+const statsRoutes = require('./routes/statsRoutes');
+const docsRoutes = require('./routes/docsRoutes');
+const securityRoutes = require('./routes/securityRoutes');
+const settingsRoutes = require('./routes/settingsRoutes');
 const configurePassport = require('./config/passport');
 
 const app = express();
@@ -40,10 +45,17 @@ app.use(passport.session());
 
 app.use('/api/auth', authRoutes);
 app.use('/api', planRoutes);
+app.use('/api/apis', apiRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/docs', docsRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/tickets', require('./routes/ticketRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  
   if (err.statusCode && err.message) {
     return res.status(err.statusCode).json({ 
       success: false,
@@ -51,7 +63,6 @@ app.use((err, req, res, next) => {
       field: err.field || undefined
     });
   }
-  
   res.status(500).json({ 
     success: false,
     message: err.message || 'Server Error'
@@ -59,7 +70,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

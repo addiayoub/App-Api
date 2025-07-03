@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const subscriptionSchema = new mongoose.Schema({
+const SubscriptionSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -17,8 +17,8 @@ const subscriptionSchema = new mongoose.Schema({
   },
   billingType: {
     type: String,
-    required: true,
-    enum: ['monthly', 'annual']
+    enum: ['monthly', 'annual'],
+    required: true
   },
   price: {
     type: Number,
@@ -34,18 +34,36 @@ const subscriptionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['active', 'expired', 'cancelled'],
+    enum: ['active', 'inactive', 'cancelled', 'expired'],
     default: 'active'
   },
   autoRenew: {
     type: Boolean,
     default: true
-  }
+  },
+  isManual: {
+    type: Boolean,
+    default: false
+  },
+  paymentMethod: String,
+  transactionId: String,
+  notes: String
 }, {
   timestamps: true
 });
 
-subscriptionSchema.index({ userId: 1, status: 1 });
-subscriptionSchema.index({ expiresAt: 1 });
+// Index pour les recherches fréquentes
+SubscriptionSchema.index({ userId: 1, status: 1 });
+SubscriptionSchema.index({ expiresAt: 1 });
+SubscriptionSchema.index({ planId: 1 });
 
-module.exports = mongoose.model('Subscription', subscriptionSchema);
+// Middleware pour mettre à jour le statut si la date d'expiration est passée
+SubscriptionSchema.pre('save', function(next) {
+  if (this.expiresAt < new Date() && this.status === 'active') {
+    this.status = 'expired';
+    this.autoRenew = false;
+  }
+  next();
+});
+
+module.exports = mongoose.model('Subscription', SubscriptionSchema);

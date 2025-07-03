@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import Lottie from 'lottie-react';
-import { Zap, X, Shield, Settings, CreditCard, HelpCircle, LogOut, Code, Database, Server, Globe, Cpu, ChevronDown, Terminal, Wifi, User } from 'lucide-react';
+import { Zap, X, Shield, Settings, CreditCard, HelpCircle, LogOut, Code, Database, Server, Globe, Cpu, ChevronDown, Terminal, Wifi, User, Rocket, Sparkles } from 'lucide-react';
 import apiAnimation from '../components/animations/Animation - 1750437312038.json';
 import developersAnimation from '../components/animations/Animation - 1750437373065.json';
 import PricingSection from './Pricing/PricingSection';
@@ -14,16 +14,14 @@ import { toast } from 'react-toastify';
 import axios from 'axios';
 import Header from './Header';
 
-const Home = () => {
+const Home = ({ user, setUser, onLogout }) => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authType, setAuthType] = useState('login');
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [user, setUser] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
   const prefersReducedMotion = useReducedMotion();
 
-  // Vérifier les paramètres URL au chargement et à chaque changement de location
   useEffect(() => {
     const urlParams = new URLSearchParams(location.search);
     const authTypeParam = urlParams.get('auth');
@@ -31,7 +29,6 @@ const Home = () => {
     if (authTypeParam === 'login' || authTypeParam === 'register') {
       setShowAuthModal(true);
       setAuthType(authTypeParam);
-      // Nettoyer l'URL après avoir extrait le paramètre
       const newUrl = new URL(window.location);
       newUrl.searchParams.delete('auth');
       window.history.replaceState({}, document.title, newUrl.pathname);
@@ -39,27 +36,6 @@ const Home = () => {
   }, [location.search]);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const storedUser = localStorage.getItem('user');
-        
-        if (token && storedUser) {
-          const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          
-          if (res.data) {
-            setUser(JSON.parse(storedUser));
-          }
-        }
-      } catch (err) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        setUser(null);
-      }
-    };
-
     const handleGoogleAuth = async () => {
       const urlParams = new URLSearchParams(location.search);
       const token = urlParams.get('token');
@@ -72,51 +48,48 @@ const Home = () => {
           let userData;
           if (userParam) {
             userData = JSON.parse(decodeURIComponent(userParam));
-            setUser(userData);
-            localStorage.setItem('user', JSON.stringify(userData));
+            console.log('User data from URL:', userData);
           } else {
             const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
               headers: { Authorization: `Bearer ${token}` }
             });
             
-            userData = res.data;
-            setUser(userData);
-            localStorage.setItem('user', JSON.stringify(userData));
+            if (res.data && res.data.success) {
+              userData = res.data.data;
+              console.log('User data from API after Google auth:', userData);
+            } else {
+              throw new Error('Failed to get user data from API');
+            }
           }
           
-          // Nettoyer l'URL
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
+          
           const newUrl = new URL(window.location);
           newUrl.searchParams.delete('token');
           newUrl.searchParams.delete('user');
           window.history.replaceState({}, document.title, newUrl.pathname);
           
-          toast.success('Connexion Google réussie!');
+          toast.success('Connexion réussie!');
           setShowAuthModal(false);
         } catch (err) {
-          console.error('Failed to fetch user data:', err);
+          console.error('Failed to process Google auth:', err);
           localStorage.removeItem('token');
-          toast.error('Erreur lors de la connexion Google');
+          toast.error('Erreur lors de la connexion');
         }
       }
     };
 
-    checkAuth();
     handleGoogleAuth();
-  }, [location.search]);
+  }, [location.search, setUser]);
 
   const handleLoginSuccess = useCallback((userData) => {
+    console.log('Login success with user data:', userData);
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
     setShowAuthModal(false);
     toast.success('Connexion réussie!');
-  }, []);
-
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    toast.success('Déconnexion réussie');
-  }, []);
+  }, [setUser]);
 
   const handleAuthModal = useCallback((type) => {
     setShowAuthModal(true);
@@ -132,16 +105,26 @@ const Home = () => {
     pricingSection?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // Fonction pour fermer le modal
   const closeAuthModal = useCallback(() => {
     setShowAuthModal(false);
-    // Nettoyer l'URL si nécessaire
     const newUrl = new URL(window.location);
     if (newUrl.searchParams.has('auth')) {
       newUrl.searchParams.delete('auth');
       window.history.replaceState({}, document.title, newUrl.pathname);
     }
   }, []);
+
+  const handleNavigateToDashboard = useCallback(() => {
+    if (user) {
+      if (user.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
+    } else {
+      handleAuthModal('register');
+    }
+  }, [user, navigate, handleAuthModal]);
 
   const features = useMemo(() => [
     {
@@ -305,7 +288,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white relative overflow-hidden">
-      <Header />
+      <Header user={user} onLogout={onLogout} />
       
       {FloatingNodes}
       {CodeRainComponent}
@@ -319,7 +302,6 @@ const Home = () => {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={(e) => {
-              // Fermer le modal si on clique sur l'overlay
               if (e.target === e.currentTarget) {
                 closeAuthModal();
               }
@@ -362,15 +344,16 @@ const Home = () => {
         )}
       </AnimatePresence>
 
-     <PlanModal
-  selectedPlan={selectedPlan}
-  onClose={() => setSelectedPlan(null)}
-  onSubscribe={() => {
-    setSelectedPlan(null);
-    handleAuthModal('register');
-  }}
-  user={user} // Ajoutez cette ligne
-/>
+      <PlanModal
+        selectedPlan={selectedPlan}
+        onClose={() => setSelectedPlan(null)}
+        onSubscribe={() => {
+          setSelectedPlan(null);
+          handleAuthModal('register');
+        }}
+        user={user}
+      />
+
       <section className="relative overflow-hidden pt-5">
         {NetworkGridComponent}
         <div className="container mx-auto px-6 py-24 flex flex-col md:flex-row items-center relative z-10">
@@ -401,28 +384,30 @@ const Home = () => {
             
             <div className="flex flex-col sm:flex-row gap-4">
               <motion.button 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium cursor-pointer relative overflow-hidden"
+                className="bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 text-white px-8 py-3 rounded-lg font-medium cursor-pointer relative overflow-hidden group"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => handleAuthModal('register')}
+                onClick={handleNavigateToDashboard}
               >
-                <span className="relative z-10">Commencer gratuitement</span>
+                <span className="relative z-10 flex items-center gap-2">
+                  <Rocket className="w-5 h-5" />
+                  {user ? (user.role === 'admin' ? 'Admin Dashboard' : 'Accéder au Dashboard') : 'Commencer maintenant'}
+                </span>
                 {!prefersReducedMotion && (
                   <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-600"
-                    initial={{ x: '-100%' }}
-                    whileHover={{ x: 0 }}
-                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                   />
                 )}
+                <Sparkles className="absolute -right-2 -top-2 text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </motion.button>
               
               <motion.button 
-                className="border border-blue-600 text-blue-400 hover:bg-blue-900/30 px-8 py-3 rounded-lg font-medium cursor-pointer"
+                className="border border-blue-600 text-blue-400 hover:bg-blue-900/30 px-8 py-3 rounded-lg font-medium cursor-pointer flex items-center gap-2"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={scrollToPricing}
               >
+                <Terminal className="w-5 h-5" />
                 Explorer les API
               </motion.button>
             </div>
@@ -481,7 +466,7 @@ const Home = () => {
               return (
                 <motion.div 
                   key={index}
-                  className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-xl border border-gray-700 hover:border-blue-500 transition-all relative overflow-hidden"
+                  className="bg-gray-800/50 backdrop-blur-sm p-8 rounded-xl border border-gray-700 hover:border-blue-500 transition-all relative overflow-hidden group"
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -513,6 +498,7 @@ const Home = () => {
                   </div>
                   <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
                   <p className="text-gray-300">{feature.description}</p>
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </motion.div>
               );
             })}
@@ -581,23 +567,24 @@ const Home = () => {
               Prêt à commencer ?
             </h2>
             <p className="text-xl mb-8">
-              Créez votre compte gratuitement et obtenez votre clé API dès maintenant.
+              {user ? 'Accédez à votre dashboard pour gérer vos API' : 'Créez votre compte gratuitement et obtenez votre clé API dès maintenant.'}
             </p>
             <motion.button 
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-medium cursor-pointer relative overflow-hidden"
+              className="bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 text-white px-8 py-3 rounded-lg font-medium cursor-pointer relative overflow-hidden group"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              onClick={() => handleAuthModal('register')}
+              onClick={handleNavigateToDashboard}
             >
-              <span className="relative z-10">S'inscrire gratuitement</span>
+              <span className="relative z-10 flex items-center gap-2">
+                {user ? <User className="w-5 h-5" /> : <Rocket className="w-5 h-5" />}
+                {user ? (user.role === 'admin' ? 'Admin Panel' : 'Mon Espace') : 'S\'inscrire gratuitement'}
+              </span>
               {!prefersReducedMotion && (
                 <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-blue-400 to-blue-600"
-                  initial={{ x: '-100%' }}
-                  whileHover={{ x: 0 }}
-                  transition={{ duration: 0.3 }}
+                  className="absolute inset-0 bg-gradient-to-r from-purple-500 to-blue-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                 />
               )}
+              <Sparkles className="absolute -right-2 -top-2 text-yellow-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </motion.button>
           </motion.div>
         </div>
