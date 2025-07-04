@@ -54,7 +54,7 @@ const PricingSection = ({ onPlanSelect }) => {
 
         for (const planType of planTypes) {
           const endpointsResponse = await axios.get(
-            `/api/api/tunnel/admin/available_endpoints/${planType}`,
+            `https://apiservice.insightone.ma/api/tunnel/admin/available_endpoints/${planType}`,
             {
               headers: {
                 'accept': 'application/json',
