@@ -32,7 +32,7 @@ import APIContent from './APIContent';
 import StatsContent from './StatsContent';
 import SecurityContent from './SecurityContent';
 import SubscriptionContent from './SubscriptionContent';
-import SettingsContent from './SettingsContent.JSX';
+import SettingsContent from './SettingsContent';
 import DocsContent from './DocsContent';
 import TicketsContent from './TicketsContent';
 
