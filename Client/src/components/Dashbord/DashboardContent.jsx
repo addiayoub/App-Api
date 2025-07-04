@@ -38,40 +38,52 @@ const DashboardContent = ({ user, stats, subscription, apiKeys, securityLogs }) 
 
   // Fetch plan details and available APIs
   useEffect(() => {
-    const fetchPlanDetails = async () => {
-      setLoadingPlanDetails(true);
-      try {
-        const response = await fetch(`/api/api/tunnel/admin/all_endpoints_by_tag`, {
-          headers: {
-            'accept': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Erreur lors de la récupération des plans');
-        }
-        
-        const data = await response.json();
-        setPlanDetails(data);
-        
-        // Update endpoints based on current plan
-        if (subscription?.data?.plan) {
-          const userPlan = subscription.data.plan.toLowerCase();
-          const endpoints = data[userPlan] || [];
-          setAvailableEndpoints(endpoints);
-          
-          setDashboardStats(prev => ({
-            ...prev,
-            apiCount: endpoints.length
-          }));
-        }
-      } catch (err) {
-        console.error('Erreur lors du chargement des plans:', err);
-      } finally {
-        setLoadingPlanDetails(false);
+  // Dans la fonction fetchPlanDetails
+const fetchPlanDetails = async () => {
+  setLoadingPlanDetails(true);
+  try {
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/all-endpoints-by-tag`, {
+      headers: {
+        'accept': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
       }
-    };
+    });
+    
+    if (!response.ok) {
+      throw new Error('Erreur lors de la récupération des plans');
+    }
+    
+    const result = await response.json();
+    
+    // Vérifiez la structure des données reçues
+    console.log("Données reçues:", result);
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Erreur dans la réponse du serveur');
+    }
+
+    const data = result.data; // Accédez à la propriété data
+    
+    setPlanDetails(data);
+    
+    // Update endpoints based on current plan
+    if (subscription?.data?.plan) {
+      const userPlan = subscription.data.plan.toLowerCase();
+      const endpoints = data[userPlan] || [];
+      setAvailableEndpoints(endpoints);
+      
+      setDashboardStats(prev => ({
+        ...prev,
+        apiCount: endpoints.length
+      }));
+    }
+  } catch (err) {
+    console.error('Erreur lors du chargement des plans:', err);
+    // Affichez un message d'erreur à l'utilisateur
+  } finally {
+    setLoadingPlanDetails(false);
+  }
+};
 
     fetchPlanDetails();
   }, [subscription]);

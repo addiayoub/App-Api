@@ -5,9 +5,8 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User'); // Ajout de l'import User
 
 const planController = {
-  getAllEndpointsByTag: async (req, res) => {
+    getAllEndpointsByTag: async (req, res) => {
     try {
-      // Appel à l'API externe
       const endpointsResponse = await axios.get(
         'https://apiservice.insightone.ma/api/tunnel/admin/all_endpoints_by_tag',
         {
@@ -30,6 +29,112 @@ const planController = {
         message: 'Failed to fetch endpoints by tag',
         error: error.response?.data?.message || error.message
       });
+    }
+  },
+
+  // NOUVELLE MÉTHODE : Exécuter une API pour un utilisateur
+  executeApiForUser: async (req, res) => {
+    try {
+      const { endpoint, method, parameters, headers, userToken } = req.body;
+
+      // Vérifier que le token utilisateur est fourni
+      if (!userToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'User token is required'
+        });
+      }
+
+      // Construire l'URL avec les paramètres
+      let url = `https://apiservice.insightone.ma${endpoint}`;
+      if (parameters && parameters.length > 0) {
+        const params = parameters.filter(p => p.value);
+        if (params.length > 0) {
+          url += '?' + params.map(p => `${p.name}=${encodeURIComponent(p.value)}`).join('&');
+        }
+      }
+
+      // Préparer les headers
+      const requestHeaders = {
+        'accept': 'application/json',
+        'Authorization': `Bearer ${userToken}`
+      };
+
+      // Ajouter les headers personnalisés si fournis
+      if (headers && headers.length > 0) {
+        headers.forEach(header => {
+          if (header.name && header.value && header.name !== 'Authorization') {
+            requestHeaders[header.name] = header.value;
+          }
+        });
+      }
+
+      // Détecter si on demande du CSV
+      const formatParam = parameters?.find(p => p.name === 'format');
+      const isCsvRequested = formatParam && formatParam.value === 'csv';
+      
+      if (isCsvRequested) {
+        requestHeaders['accept'] = 'text/csv';
+      }
+
+      // Faire l'appel à l'API
+      const apiResponse = await axios({
+        method: method || 'GET',
+        url: url,
+        headers: requestHeaders,
+        timeout: 30000 // 30 secondes de timeout
+      });
+
+      // Préparer la réponse
+      let responseData;
+      const contentType = apiResponse.headers['content-type'];
+      
+      if (contentType && contentType.includes('text/csv')) {
+        responseData = {
+          csv: apiResponse.data,
+          message: "Données CSV reçues"
+        };
+      } else {
+        responseData = apiResponse.data;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          status: apiResponse.status,
+          data: responseData,
+          headers: apiResponse.headers,
+          isCsv: isCsvRequested
+        }
+      });
+
+    } catch (error) {
+      console.error('Error executing API:', error.message);
+      
+      // Gestion des erreurs d'API
+      if (error.response) {
+        res.status(error.response.status).json({
+          success: false,
+          message: error.response.data?.message || error.message,
+          data: {
+            status: error.response.status,
+            data: { error: error.response.data?.message || error.message },
+            headers: error.response.headers || {},
+            isCsv: false
+          }
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to execute API',
+          data: {
+            status: 500,
+            data: { error: error.message },
+            headers: {},
+            isCsv: false
+          }
+        });
+      }
     }
   },
   getAvailableEndpoints: async (req, res) => {

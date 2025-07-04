@@ -9,6 +9,7 @@ router.get('/plans-with-endpoints', planController.getAllPlansWithEndpoints);
 router.get('/plans/:id', planController.getPlanById);
 router.get('/endpoints/:planType', planController.getAvailableEndpoints);
 router.get('/all-endpoints-by-tag', planController.getAllEndpointsByTag);
+router.post('/execute-api', planController.executeApiForUser);
 
 // Routes utilisateur authentifié
 router.post('/subscribe', ensureAuth, planController.subscribeToPlan);

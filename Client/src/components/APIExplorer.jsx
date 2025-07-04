@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import Header from './Header';
 import { useNavigate } from 'react-router-dom';
-
+import Swal from 'sweetalert2';
 const APIExplorer = () => {
   const [selectedAPI, setSelectedAPI] = useState(null);
   const [activeTab, setActiveTab] = useState('details');
@@ -202,57 +202,57 @@ const transformApiData = (api, category) => {
 
 const executeApi = async () => {
   if (!apiTokens[sidebarApiData.id]) {
-    alert(`Veuillez entrer votre token d'authentification pour exécuter cette API`);
+    Swal.fire({
+      title: 'Token requis',
+      text: `Veuillez entrer votre token d'authentification pour exécuter cette API`,
+      icon: 'warning',
+      background: '#1e293b', // Couleur de fond sombre
+      color: '#f8fafc', // Couleur de texte clair
+      confirmButtonColor: '#6366f1', // Couleur du bouton
+      iconColor: '#f59e0b', // Couleur de l'icône
+      backdrop: 'rgba(0,0,0,0.8)' // Fond semi-transparent
+    });
     return;
   }
 
   setLoading(true);
   try {
-    let url = `/api${sidebarApiData.endpoint}`;
-    const params = sidebarApiData.parameters.filter(p => p.value);
-    
-    // Vérifier si le paramètre format est défini à 'csv'
-    const formatParam = sidebarApiData.parameters.find(p => p.name === 'format');
-    const isCsvRequested = formatParam && formatParam.value === 'csv';
-    
-    if (params.length > 0) {
-      url += '?' + params.map(p => `${p.name}=${encodeURIComponent(p.value)}`).join('&');
-    }
-
-    const response = await fetch(url, {
-      method: sidebarApiData.method,
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/execute-api`, {
+      method: 'POST',
       headers: {
-        'accept': isCsvRequested ? 'text/csv' : 'application/json',
-        'Authorization': `Bearer ${apiTokens[sidebarApiData.id]}`
-      }
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        endpoint: sidebarApiData.endpoint,
+        method: sidebarApiData.method,
+        parameters: sidebarApiData.parameters.filter(p => p.value),
+        headers: sidebarApiData.headers,
+        userToken: apiTokens[sidebarApiData.id]
+      })
     });
 
-    if (!response.ok) {
-      throw new Error(`Erreur ${response.status}: ${response.statusText}`);
-    }
-
-    let data;
-    const contentType = response.headers.get('content-type');
+    const result = await response.json();
     
-    if (contentType && contentType.includes('text/csv')) {
-      const csvText = await response.text();
-      data = {
-        csv: csvText,
-        message: "Données CSV reçues - Téléchargez le fichier ci-dessous"
-      };
-    } else {
-      data = await response.json();
+    if (!result.success) {
+      throw new Error(result.message || 'Erreur lors de l\'exécution');
     }
     
-    setResponse({
-      status: response.status,
-      data: data,
-      headers: Object.fromEntries(response.headers.entries()),
-      isCsv: isCsvRequested
-    });
+    setResponse(result.data);
   } catch (err) {
+    Swal.fire({
+      title: 'Erreur',
+      text: err.message,
+      icon: 'error',
+      background: '#1e293b',
+      color: '#f8fafc',
+      confirmButtonColor: '#6366f1',
+      iconColor: '#ef4444',
+      backdrop: 'rgba(0,0,0,0.8)'
+    });
+    
     setResponse({
-      status: err.message.includes('Erreur') ? parseInt(err.message.split(' ')[1]) : 500,
+      status: 500,
       data: { error: err.message },
       headers: {},
       isCsv: false

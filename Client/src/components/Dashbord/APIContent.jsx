@@ -3,7 +3,7 @@ import React from 'react'
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, ChevronDown, Code, Shield, Play, RefreshCw, Copy, Eye, EyeOff, X, Zap, Download,Activity  } from 'lucide-react';
-
+import Swal from 'sweetalert2';
 const APIContent = ({ apiKeys, fetchData, subscription }) => {
   const [apiList, setApiList] = useState([]);
   const [loadingApis, setLoadingApis] = useState(true);
@@ -16,55 +16,370 @@ const APIContent = ({ apiKeys, fetchData, subscription }) => {
   const [apiTokens, setApiTokens] = useState({});
   const [apiData, setApiData] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    const fetchAPIs = async () => {
-      try {
-        if (!subscription || !subscription.data || subscription.error || !subscription.data.autoRenew) {
-          setApiList([]);
-          setLoadingApis(false);
-          return;
-        }
-
-        const response = await fetch(`/api/api/tunnel/admin/all_endpoints_by_tag`, {
-          headers: {
-            'accept': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Erreur lors de la récupération des APIs');
-        }
-        
-        const data = await response.json();
-        const transformedApis = [];
-        const userPlan = subscription.data.plan;
-        
-        if (userPlan === 'Basique' && data.basique) {
-          data.basique.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Basique'));
-          });
-        } else if (userPlan === 'Pro' && data.pro) {
-          data.pro.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Pro'));
-          });
-        } else if (userPlan === 'Entreprise' && data.entreprise) {
-          data.entreprise.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Entreprise'));
-          });
-        }
-        
-        setApiList(transformedApis);
+// Fonction useEffect modifiée pour utiliser le backend
+useEffect(() => {
+  const fetchAPIs = async () => {
+    try {
+      if (!subscription || !subscription.data || subscription.error || !subscription.data.autoRenew) {
+        setApiList([]);
         setLoadingApis(false);
-      } catch (err) {
-        setError(err.message);
-        setLoadingApis(false);
+        return;
       }
+
+      // Utiliser le backend au lieu de l'API directe
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/all-endpoints-by-tag`, {
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la récupération des APIs');
+      }
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Erreur lors de la récupération des APIs');
+      }
+      
+      const data = result.data;
+      const transformedApis = [];
+      const userPlan = subscription.data.plan;
+      
+      if (userPlan === 'Basique' && data.basique) {
+        data.basique.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Basique'));
+        });
+      } else if (userPlan === 'Pro' && data.pro) {
+        data.pro.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Pro'));
+        });
+      } else if (userPlan === 'Entreprise' && data.entreprise) {
+        data.entreprise.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Entreprise'));
+        });
+      }
+      
+      setApiList(transformedApis);
+      setLoadingApis(false);
+    } catch (err) {
+      setError(err.message);
+      setLoadingApis(false);
+      
+      // SweetAlert2 pour les erreurs
+      Swal.fire({
+        icon: 'error',
+        title: 'Erreur de chargement',
+        text: err.message,
+        background: '#1f2937',
+        color: '#f3f4f6',
+        confirmButtonColor: '#3b82f6',
+        customClass: {
+          popup: 'swal-dark-popup',
+          title: 'swal-dark-title',
+          content: 'swal-dark-content'
+        }
+      });
+    }
+  };
+  
+  fetchAPIs();
+}, [subscription]);
+
+// Fonction executeApi modifiée pour utiliser le backend
+const executeApi = async () => {
+  if (!apiTokens[apiData.id]) {
+    // SweetAlert2 pour demander le token
+    const { value: token } = await Swal.fire({
+      title: 'Token d\'authentification requis',
+      text: 'Veuillez entrer votre token d\'authentification pour exécuter cette API',
+      input: 'password',
+      inputPlaceholder: 'Votre token API...',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#ef4444',
+      showCancelButton: true,
+      inputValidator: (value) => {
+        if (!value) {
+          return 'Vous devez entrer un token!'
+        }
+      },
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content',
+        input: 'swal-dark-input'
+      }
+    });
+
+    if (token) {
+      setApiTokens(prev => ({
+        ...prev,
+        [apiData.id]: token
+      }));
+      
+      // Mettre à jour les headers avec le nouveau token
+      const newHeaders = [...apiData.headers];
+      const authIndex = newHeaders.findIndex(h => h.name === 'Authorization');
+      if (authIndex !== -1) {
+        newHeaders[authIndex].value = token;
+        setApiData({...apiData, headers: newHeaders});
+      }
+    } else {
+      return;
+    }
+  }
+
+  setLoading(true);
+  
+  try {
+    // Utiliser le backend pour exécuter l'API
+    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/execute-api`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({
+        endpoint: apiData.endpoint,
+        method: apiData.method,
+        parameters: apiData.parameters,
+        headers: apiData.headers,
+        userToken: apiTokens[apiData.id]
+      })
+    });
+
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Erreur lors de l\'exécution de l\'API');
+    }
+
+    setResponse(result.data);
+    
+    // SweetAlert2 pour le succès
+    Swal.fire({
+      icon: 'success',
+      title: 'API exécutée avec succès',
+      text: 'La requête a été traitée avec succès',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#10b981',
+      timer: 2000,
+      timerProgressBar: true,
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+    
+  } catch (err) {
+    const errorResponse = {
+      status: err.message.includes('Erreur') ? parseInt(err.message.split(' ')[1]) : 500,
+      data: { error: err.message },
+      headers: {},
+      isCsv: false
     };
     
-    fetchAPIs();
-  }, [subscription]);
+    setResponse(errorResponse);
+    
+    // SweetAlert2 pour les erreurs d'exécution
+    Swal.fire({
+      icon: 'error',
+      title: 'Erreur d\'exécution',
+      text: err.message,
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#ef4444',
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
+// Fonction pour gérer les erreurs de subscription avec SweetAlert2
+const handleSubscriptionError = () => {
+  Swal.fire({
+    icon: 'warning',
+    title: 'Abonnement annulé',
+    text: 'Votre abonnement a été annulé. Vous n\'avez plus accès aux APIs.',
+    background: '#1f2937',
+    color: '#f3f4f6',
+    confirmButtonText: 'Réactiver l\'abonnement',
+    confirmButtonColor: '#3b82f6',
+    showCancelButton: true,
+    cancelButtonText: 'Fermer',
+    cancelButtonColor: '#6b7280',
+    customClass: {
+      popup: 'swal-dark-popup',
+      title: 'swal-dark-title',
+      content: 'swal-dark-content'
+    }
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // Rediriger vers la page d'abonnement
+      window.location.href = '/subscription';
+    }
+  });
+};
+
+// Fonction pour gérer les erreurs de chargement avec SweetAlert2
+const handleLoadingError = () => {
+  Swal.fire({
+    icon: 'error',
+    title: 'Erreur de chargement',
+    text: error,
+    background: '#1f2937',
+    color: '#f3f4f6',
+    confirmButtonText: 'Réessayer',
+    confirmButtonColor: '#3b82f6',
+    showCancelButton: true,
+    cancelButtonText: 'Fermer',
+    cancelButtonColor: '#6b7280',
+    customClass: {
+      popup: 'swal-dark-popup',
+      title: 'swal-dark-title',
+      content: 'swal-dark-content'
+    }
+  }).then((result) => {
+    if (result.isConfirmed) {
+      window.location.reload();
+    }
+  });
+};
+
+// Fonction pour copier dans le presse-papiers avec SweetAlert2
+const copyToClipboard = (text) => {
+  navigator.clipboard.writeText(text).then(() => {
+    Swal.fire({
+      icon: 'success',
+      title: 'Copié!',
+      text: 'Le contenu a été copié dans le presse-papiers',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#10b981',
+      timer: 1500,
+      timerProgressBar: true,
+      showConfirmButton: false,
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+  }).catch(() => {
+    Swal.fire({
+      icon: 'error',
+      title: 'Erreur',
+      text: 'Impossible de copier dans le presse-papiers',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#ef4444',
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+  });
+};
+
+// Fonction pour télécharger les données CSV avec SweetAlert2
+const downloadCSV = (csvData, filename = 'data.csv') => {
+  try {
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    Swal.fire({
+      icon: 'success',
+      title: 'Téléchargement réussi',
+      text: 'Le fichier CSV a été téléchargé avec succès',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#10b981',
+      timer: 2000,
+      timerProgressBar: true,
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+  } catch (error) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Erreur de téléchargement',
+      text: 'Impossible de télécharger le fichier CSV',
+      background: '#1f2937',
+      color: '#f3f4f6',
+      confirmButtonColor: '#ef4444',
+      customClass: {
+        popup: 'swal-dark-popup',
+        title: 'swal-dark-title',
+        content: 'swal-dark-content'
+      }
+    });
+  }
+};
+
+// CSS personnalisé pour SweetAlert2 (à ajouter dans votre fichier CSS)
+const swalCustomStyles = `
+.swal-dark-popup {
+  background-color: #1f2937 !important;
+  border: 1px solid #374151 !important;
+}
+
+.swal-dark-title {
+  color: #f3f4f6 !important;
+}
+
+.swal-dark-content {
+  color: #d1d5db !important;
+}
+
+.swal-dark-input {
+  background-color: #374151 !important;
+  border: 1px solid #4b5563 !important;
+  color: #f3f4f6 !important;
+}
+
+.swal-dark-input:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+}
+
+.swal2-timer-progress-bar {
+  background: #3b82f6 !important;
+}
+`;
+
+// Fonction pour injecter les styles personnalisés
+const injectSwalStyles = () => {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = swalCustomStyles;
+  document.head.appendChild(styleElement);
+};
+
+// Appeler cette fonction au chargement du composant
+useEffect(() => {
+  injectSwalStyles();
+}, []);
 
   const transformApiData = (api, category) => {
     return {
@@ -169,71 +484,9 @@ const APIContent = ({ apiKeys, fetchData, subscription }) => {
     setApiData({...apiData, headers: newHeaders});
   };
 
-  const executeApi = async () => {
-    if (!apiTokens[apiData.id]) {
-      alert(`Veuillez entrer votre token d'authentification pour exécuter cette API`);
-      return;
-    }
+  
 
-    setLoading(true);
-    try {
-      let url = `/api${apiData.endpoint}`;
-      const params = apiData.parameters.filter(p => p.value);
-      
-      const formatParam = apiData.parameters.find(p => p.name === 'format');
-      const isCsvRequested = formatParam && formatParam.value === 'csv';
-      
-      if (params.length > 0) {
-        url += '?' + params.map(p => `${p.name}=${encodeURIComponent(p.value)}`).join('&');
-      }
-
-      const response = await fetch(url, {
-        method: apiData.method,
-        headers: {
-          'accept': isCsvRequested ? 'text/csv' : 'application/json',
-          'Authorization': `Bearer ${apiTokens[apiData.id]}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
-      }
-
-      let data;
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('text/csv')) {
-        const csvText = await response.text();
-        data = {
-          csv: csvText,
-          message: "Données CSV reçues - Téléchargez le fichier ci-dessous"
-        };
-      } else {
-        data = await response.json();
-      }
-      
-      setResponse({
-        status: response.status,
-        data: data,
-        headers: Object.fromEntries(response.headers.entries()),
-        isCsv: isCsvRequested
-      });
-    } catch (err) {
-      setResponse({
-        status: err.message.includes('Erreur') ? parseInt(err.message.split(' ')[1]) : 500,
-        data: { error: err.message },
-        headers: {},
-        isCsv: false
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-  };
-
+ 
   const formatJson = (json) => {
     return JSON.stringify(json, null, 2);
   };
