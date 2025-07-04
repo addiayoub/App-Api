@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
  plugins: [react(),
       tailwindcss()
+
  ],
   server: {
     proxy: {
@@ -14,12 +15,6 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, '')
-      },
-      '/endpoints': {
-        target: 'https://apiservice.insightone.ma',
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) => path.replace(/^\/endpoints/, '')
       }
     }
   }

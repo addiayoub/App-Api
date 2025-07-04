@@ -39,8 +39,9 @@ const PricingSection = ({ onPlanSelect }) => {
   useEffect(() => {
     const fetchPlans = async () => {
       try {
-        const plansResponse = await axios.get(
-          `${import.meta.env.VITE_API_URL}/api/plans`,
+        // Nouvelle approche : utiliser l'API backend qui gère tout
+        const response = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/plans-with-endpoints`,
           {
             headers: {
               'accept': 'application/json',
@@ -49,47 +50,32 @@ const PricingSection = ({ onPlanSelect }) => {
           }
         );
 
-        const fetchedPlans = [];
-        const planTypes = ['basique', 'pro', 'entreprise'];
+        if (response.data.success) {
+          const transformedPlans = response.data.data.map(plan => ({
+            name: plan.name,
+            price: plan.monthlyPrice === 0 ? "0" : plan.monthlyPrice.toString(),
+            annualPrice: plan.annualPrice.toString(),
+            description: plan.description,
+            features: [
+              ...plan.features,
+              `${plan.endpoints.length} endpoints disponibles`
+            ],
+            popular: plan.popular,
+            tag: plan.tag,
+            endpoints: plan.endpoints,
+            id: plan._id
+          }));
 
-        for (const planType of planTypes) {
-       const endpointsResponse = await axios.get(
-  `/endpoints/api/tunnel/admin/available_endpoints/${planType}`,
-  {
-    headers: {
-      'accept': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
-    }
-  }
-);
-
-          const matchingPlan = plansResponse.data.data.find(
-            plan => plan.tag.toLowerCase() === planType
-          );
-
-          if (matchingPlan) {
-            const transformedPlan = {
-              name: matchingPlan.name,
-              price: matchingPlan.monthlyPrice === 0 ? "0" : matchingPlan.monthlyPrice.toString(),
-              annualPrice: matchingPlan.annualPrice.toString(),
-              description: matchingPlan.description,
-              features: [...matchingPlan.features, `${endpointsResponse.data.endpoints.length} endpoints disponibles`],
-              popular: matchingPlan.popular,
-              tag: matchingPlan.tag,
-              endpoints: endpointsResponse.data.endpoints,
-              id: matchingPlan._id
-            };
-            fetchedPlans.push(transformedPlan);
-          }
+          setPlans(transformedPlans);
         }
-
-        setPlans(fetchedPlans);
         setLoading(false);
       } catch (err) {
-        setError(err.message);
+        console.error('Error fetching plans:', err);
+        setError(err.response?.data?.message || err.message);
         setLoading(false);
       }
     };
+
     fetchPlans();
   }, []);
 
@@ -100,86 +86,86 @@ const PricingSection = ({ onPlanSelect }) => {
     toast.success('Connexion réussie!');
   };
 
-const handleSubscribe = async (plan) => {
-  if (!user) {
-    setShowAuthModal(true);
-    setAuthType('login');
-    return;
-  }
+  const handleSubscribe = async (plan) => {
+    if (!user) {
+      setShowAuthModal(true);
+      setAuthType('login');
+      return;
+    }
 
-  try {
-    const response = await axios.post(
-      `${import.meta.env.VITE_API_URL}/api/subscribe`,
-      {
-        planId: plan.id,
-        billingType: billingCycle
-      },
-      {
-        headers: {
-          'accept': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/subscribe`,
+        {
+          planId: plan.id,
+          billingType: billingCycle
+        },
+        {
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
         }
+      );
+      
+      if (response.data.success) {
+        await Swal.fire({
+          title: 'Souscription réussie!',
+          html: `
+            <div class="text-left">
+              <p class="mb-4">Votre abonnement <span class="font-bold text-blue-400">${plan.name}</span> a été activé avec succès.</p>
+              <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <p class="flex items-center mb-2">
+                  <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  </svg>
+                  <span>Un email contenant votre token API a été envoyé à <span class="font-semibold">${user.email}</span></span>
+                </p>
+                <p class="text-sm text-gray-400 mt-2">Ce token vous permettra d'accéder à toutes les fonctionnalités de l'API selon votre plan.</p>
+              </div>
+            </div>
+          `,
+          icon: 'success',
+          confirmButtonText: 'Compris',
+          background: '#1a1a1a',
+          color: '#fff',
+          confirmButtonColor: '#2563eb',
+          customClass: {
+            popup: 'border-2 border-blue-500 rounded-xl',
+            title: 'text-blue-400 text-2xl',
+            htmlContainer: 'text-gray-300',
+            confirmButton: 'bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg'
+          },
+          showCloseButton: true,
+          timer: 5000
+        });
+        setSelectedPlan(null);
       }
-    );
-    
-    if (response.data.success) {
+    } catch (error) {
       await Swal.fire({
-        title: 'Souscription réussie!',
+        title: 'Erreur de souscription',
         html: `
           <div class="text-left">
-            <p class="mb-4">Votre abonnement <span class="font-bold text-blue-400">${plan.name}</span> a été activé avec succès.</p>
-            <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
-              <p class="flex items-center mb-2">
-                <svg class="w-5 h-5 mr-2 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                </svg>
-                <span>Un email contenant votre token API a été envoyé à <span class="font-semibold">${user.email}</span></span>
-              </p>
-              <p class="text-sm text-gray-400 mt-2">Ce token vous permettra d'accéder à toutes les fonctionnalités de l'API selon votre plan.</p>
+            <p class="mb-4">Une erreur est survenue lors de la souscription :</p>
+            <div class="bg-gray-800 p-4 rounded-lg border border-red-500/50">
+              <p class="text-red-400">${error.response?.data?.message || 'Erreur inconnue'}</p>
             </div>
           </div>
         `,
-        icon: 'success',
-        confirmButtonText: 'Compris',
+        icon: 'error',
+        confirmButtonText: 'OK',
         background: '#1a1a1a',
         color: '#fff',
         confirmButtonColor: '#2563eb',
         customClass: {
-          popup: 'border-2 border-blue-500 rounded-xl',
-          title: 'text-blue-400 text-2xl',
+          popup: 'border-2 border-red-500 rounded-xl',
+          title: 'text-red-400 text-2xl',
           htmlContainer: 'text-gray-300',
           confirmButton: 'bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg'
-        },
-        showCloseButton: true,
-        timer: 5000
+        }
       });
-      setSelectedPlan(null);
     }
-  } catch (error) {
-    await Swal.fire({
-      title: 'Erreur de souscription',
-      html: `
-        <div class="text-left">
-          <p class="mb-4">Une erreur est survenue lors de la souscription :</p>
-          <div class="bg-gray-800 p-4 rounded-lg border border-red-500/50">
-            <p class="text-red-400">${error.response?.data?.message || 'Erreur inconnue'}</p>
-          </div>
-        </div>
-      `,
-      icon: 'error',
-      confirmButtonText: 'OK',
-      background: '#1a1a1a',
-      color: '#fff',
-      confirmButtonColor: '#2563eb',
-      customClass: {
-        popup: 'border-2 border-red-500 rounded-xl',
-        title: 'text-red-400 text-2xl',
-        htmlContainer: 'text-gray-300',
-        confirmButton: 'bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg'
-      }
-    });
-  }
-};
+  };
 
   const toggleEndpoint = (index) => {
     setExpandedEndpoint(expandedEndpoint === index ? null : index);
@@ -205,7 +191,10 @@ const handleSubscribe = async (plan) => {
     return (
       <section id="pricing" className="py-20 bg-gradient-to-b from-black to-gray-900">
         <div className="container mx-auto px-6 text-center">
-          <p>Chargement des plans...</p>
+          <div className="flex items-center justify-center space-x-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
+            <p className="text-gray-300">Chargement des plans...</p>
+          </div>
         </div>
       </section>
     );
@@ -215,7 +204,10 @@ const handleSubscribe = async (plan) => {
     return (
       <section id="pricing" className="py-20 bg-gradient-to-b from-black to-gray-900">
         <div className="container mx-auto px-6 text-center text-red-500">
-          <p>Erreur lors du chargement des plans: {error}</p>
+          <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 max-w-md mx-auto">
+            <p className="font-semibold mb-2">Erreur lors du chargement</p>
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
         </div>
       </section>
     );
@@ -341,6 +333,7 @@ const handleSubscribe = async (plan) => {
           </div>
         </div>
 
+        {/* Modal pour les détails du plan */}
         <AnimatePresence>
           {selectedPlan && (
             <motion.div 

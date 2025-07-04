@@ -5,6 +5,117 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User'); // Ajout de l'import User
 
 const planController = {
+  getAvailableEndpoints: async (req, res) => {
+    try {
+      const { planType } = req.params;
+      
+      // Vérifier que le type de plan est valide
+      const validPlanTypes = ['basique', 'pro', 'entreprise'];
+      if (!validPlanTypes.includes(planType.toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid plan type. Must be one of: basique, pro, entreprise'
+        });
+      }
+
+      // Appel à l'API externe
+      const endpointsResponse = await axios.get(
+        `https://apiservice.insightone.ma/api/tunnel/admin/available_endpoints/${planType}`,
+        {
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${process.env.ADMIN_API_TOKEN}`
+          }
+        }
+      );
+
+      res.json({
+        success: true,
+        data: endpointsResponse.data
+      });
+
+    } catch (error) {
+      console.error('Error fetching endpoints:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch endpoints',
+        error: error.response?.data?.message || error.message
+      });
+    }
+  },
+
+  // Méthode améliorée pour getAllPlans qui utilise la nouvelle méthode
+  getAllPlansWithEndpoints: async (req, res) => {
+    try {
+      const plans = await Plan.find({ active: true }).sort({ monthlyPrice: 1 });
+      
+      const plansWithEndpoints = await Promise.all(
+        plans.map(async (plan) => {
+          try {
+            // Appel à l'API externe pour récupérer les endpoints
+            const endpointsResponse = await axios.get(
+              `https://apiservice.insightone.ma/api/tunnel/admin/available_endpoints/${plan.tag.toLowerCase()}`,
+              {
+                headers: {
+                  'accept': 'application/json',
+                  'Authorization': `Bearer ${process.env.ADMIN_API_TOKEN}`
+                }
+              }
+            );
+
+            // Récupérer les souscriptions actives pour ce plan
+            const subscriptions = await Subscription.find({
+              planId: plan._id,
+              status: 'active'
+            }).populate('userId', 'name email avatar createdAt lastLogin');
+            
+            const users = subscriptions
+              .filter(sub => sub.userId)
+              .map(sub => ({
+                id: sub.userId._id,
+                name: sub.userId.name,
+                email: sub.userId.email,
+                avatar: sub.userId.avatar,
+                subscriptionId: sub._id,
+                billingType: sub.billingType,
+                price: sub.price,
+                startDate: sub.startDate,
+                expiresAt: sub.expiresAt,
+                autoRenew: sub.autoRenew,
+                userCreatedAt: sub.userId.createdAt,
+                lastLogin: sub.userId.lastLogin
+              }));
+
+            return {
+              ...plan.toObject(),
+              endpoints: endpointsResponse.data.endpoints || [],
+              users: users,
+              totalUsers: users.length
+            };
+
+          } catch (endpointError) {
+            console.error(`Error fetching endpoints for plan ${plan.tag}:`, endpointError.message);
+            return {
+              ...plan.toObject(),
+              endpoints: [],
+              users: [],
+              totalUsers: 0
+            };
+          }
+        })
+      );
+      
+      res.json({
+        success: true,
+        data: plansWithEndpoints
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  },
   getAllPlans: async (req, res) => {
   try {
     const plans = await Plan.find({ active: true }).sort({ monthlyPrice: 1 });
