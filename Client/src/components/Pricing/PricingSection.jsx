@@ -53,8 +53,8 @@ const PricingSection = ({ onPlanSelect }) => {
         const planTypes = ['basique', 'pro', 'entreprise'];
 
         for (const planType of planTypes) {
-const endpointsResponse = await axios.get(
-  `${import.meta.env.VITE_ENDPOINTS_API_URL}/api/tunnel/admin/available_endpoints/${planType}`,
+       const endpointsResponse = await axios.get(
+  `/endpoints/api/tunnel/admin/available_endpoints/${planType}`,
   {
     headers: {
       'accept': 'application/json',
