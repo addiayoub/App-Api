@@ -53,15 +53,15 @@ const PricingSection = ({ onPlanSelect }) => {
         const planTypes = ['basique', 'pro', 'entreprise'];
 
         for (const planType of planTypes) {
-          const endpointsResponse = await axios.get(
-            `/api/api/tunnel/admin/available_endpoints/${planType}`,
-            {
-              headers: {
-                'accept': 'application/json',
-                'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
-              }
-            }
-          );
+const endpointsResponse = await axios.get(
+  `${import.meta.env.VITE_ENDPOINTS_API_URL}/api/tunnel/admin/available_endpoints/${planType}`,
+  {
+    headers: {
+      'accept': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
+    }
+  }
+);
 
           const matchingPlan = plansResponse.data.data.find(
             plan => plan.tag.toLowerCase() === planType
