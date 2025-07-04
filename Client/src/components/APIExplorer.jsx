@@ -42,51 +42,54 @@ useEffect(() => {
         window.location.reload();
 
   };
-  useEffect(() => {
-    const fetchAPIs = async () => {
-      try {
-        const response = await fetch(`/api/api/tunnel/admin/all_endpoints_by_tag`, {
-          headers: {
-            'accept': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_API_TOKEN}`
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Erreur lors de la récupération des APIs');
+ useEffect(() => {
+  const fetchAPIs = async () => {
+    try {
+      // CHANGEZ CETTE LIGNE : Appeler votre backend au lieu de l'API externe
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/all-endpoints-by-tag`, {
+        headers: {
+          'accept': 'application/json',
+          // Plus besoin d'Authorization car votre backend s'en occupe
         }
-        
-        const data = await response.json();
-        const transformedApis = [];
-        
-        if (data.basique) {
-          data.basique.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Basique'));
-          });
-        }
-        
-        if (data.pro) {
-          data.pro.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Pro'));
-          });
-        }
-        
-        if (data.entreprise) {
-          data.entreprise.forEach(api => {
-            transformedApis.push(transformApiData(api, 'Entreprise'));
-          });
-        }
-        
-        setApiList(transformedApis);
-        setLoadingApis(false);
-      } catch (err) {
-        setError(err.message);
-        setLoadingApis(false);
+      });
+      
+      if (!response.ok) {
+        throw new Error('Erreur lors de la récupération des APIs');
       }
-    };
-    
-    fetchAPIs();
-  }, []);
+      
+      const result = await response.json();
+      const data = result.data; // Récupérer les données de la réponse wrappée
+      
+      const transformedApis = [];
+      
+      if (data.basique) {
+        data.basique.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Basique'));
+        });
+      }
+      
+      if (data.pro) {
+        data.pro.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Pro'));
+        });
+      }
+      
+      if (data.entreprise) {
+        data.entreprise.forEach(api => {
+          transformedApis.push(transformApiData(api, 'Entreprise'));
+        });
+      }
+      
+      setApiList(transformedApis);
+      setLoadingApis(false);
+    } catch (err) {
+      setError(err.message);
+      setLoadingApis(false);
+    }
+  };
+  
+  fetchAPIs();
+}, []);
 
 const transformApiData = (api, category) => {
   return {

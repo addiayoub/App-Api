@@ -5,6 +5,33 @@ const Subscription = require('../models/Subscription');
 const User = require('../models/User'); // Ajout de l'import User
 
 const planController = {
+  getAllEndpointsByTag: async (req, res) => {
+    try {
+      // Appel à l'API externe
+      const endpointsResponse = await axios.get(
+        'https://apiservice.insightone.ma/api/tunnel/admin/all_endpoints_by_tag',
+        {
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${process.env.ADMIN_API_TOKEN}`
+          }
+        }
+      );
+
+      res.json({
+        success: true,
+        data: endpointsResponse.data
+      });
+
+    } catch (error) {
+      console.error('Error fetching all endpoints by tag:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch endpoints by tag',
+        error: error.response?.data?.message || error.message
+      });
+    }
+  },
   getAvailableEndpoints: async (req, res) => {
     try {
       const { planType } = req.params;

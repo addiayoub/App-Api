@@ -8,6 +8,7 @@ router.get('/plans', planController.getAllPlans);
 router.get('/plans-with-endpoints', planController.getAllPlansWithEndpoints);
 router.get('/plans/:id', planController.getPlanById);
 router.get('/endpoints/:planType', planController.getAvailableEndpoints);
+router.get('/all-endpoints-by-tag', planController.getAllEndpointsByTag);
 
 // Routes utilisateur authentifié
 router.post('/subscribe', ensureAuth, planController.subscribeToPlan);
