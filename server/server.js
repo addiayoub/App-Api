@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const passport = require('passport');
 const session = require('express-session');
 const cors = require('cors');
+const http = require('http');
+const socketio = require('socket.io');
 const connectDB = require('./config/database');
 const authRoutes = require('./routes/authRoutes');
 const planRoutes = require('./routes/planRoutes');
@@ -15,9 +17,15 @@ const settingsRoutes = require('./routes/settingsRoutes');
 const configurePassport = require('./config/passport');
 
 const app = express();
+const server = http.createServer(app);
+const io = socketio(server, {
+  cors: {
+    origin: process.env.CLIENT_URL,
+    methods: ["GET", "POST"]
+  }
+});
 
 connectDB();
-
 configurePassport(passport);
 
 app.use(express.json());
@@ -43,6 +51,25 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
+io.on('connection', (socket) => {
+  console.log('New client connected');
+  
+  socket.on('joinTicketRoom', (ticketId) => {
+    socket.join(ticketId);
+    console.log(`Client joined ticket room: ${ticketId}`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
+  });
+});
+
+// Ajouter io à req pour l'utiliser dans les contrôleurs
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api', planRoutes);
 app.use('/api/apis', apiRoutes);
@@ -50,7 +77,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/settings', settingsRoutes);
-app.use('/api/tickets', require('./routes/ticketRoutes'));
+app.use('/api/tickets', require('./routes/ticketRoutes')(io));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 
@@ -70,4 +97,4 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

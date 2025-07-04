@@ -27,6 +27,7 @@ import {
   EyeOff,
   Shield
 } from 'lucide-react';
+import { io } from 'socket.io-client';
 
 const AdminTicketsContent = () => {
   const [tickets, setTickets] = useState([]);
@@ -34,6 +35,8 @@ const AdminTicketsContent = () => {
   const [replyContent, setReplyContent] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+    const [socket, setSocket] = useState(null);
+
   const [filters, setFilters] = useState({
     status: 'all',
     priority: 'all',
@@ -51,7 +54,54 @@ const AdminTicketsContent = () => {
   const [attachments, setAttachments] = useState([]);
   const [users, setUsers] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+useEffect(() => {
+    const token = localStorage.getItem('token');
+    const newSocket = io(import.meta.env.VITE_API_URL, {
+      auth: { token },
+      transports: ['websocket']
+    });
+    setSocket(newSocket);
 
+    return () => newSocket.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('ticketUpdated', (updatedTicket) => {
+      if (selectedTicket && selectedTicket._id === updatedTicket._id) {
+        setSelectedTicket(updatedTicket);
+      }
+      setTickets(prev => prev.map(t => 
+        t._id === updatedTicket._id ? updatedTicket : t
+      ));
+    });
+
+    socket.on('ticketCreated', (newTicket) => {
+      setTickets(prev => [newTicket, ...prev]);
+    });
+
+    socket.on('newReply', ({ ticketId, reply }) => {
+      if (selectedTicket && selectedTicket._id === ticketId) {
+        setSelectedTicket(prev => ({
+          ...prev,
+          replies: [...prev.replies, reply]
+        }));
+      }
+    });
+
+    return () => {
+      socket.off('ticketUpdated');
+      socket.off('ticketCreated');
+      socket.off('newReply');
+    };
+  }, [socket, selectedTicket]);
+
+  useEffect(() => {
+    if (socket && selectedTicket) {
+      socket.emit('joinTicketRoom', selectedTicket._id);
+    }
+  }, [socket, selectedTicket]);
   const fetchTickets = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -117,6 +167,7 @@ const AdminTicketsContent = () => {
     }
   };
 
+ 
   const handleReplySubmit = async (e) => {
     e.preventDefault();
     if (!replyContent.trim()) {
@@ -134,7 +185,7 @@ const AdminTicketsContent = () => {
         formData.append('attachments', file);
       });
 
-      await axios.post(
+      const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/tickets/${selectedTicket._id}/reply`,
         formData,
         {
@@ -145,12 +196,17 @@ const AdminTicketsContent = () => {
         }
       );
 
+      if (socket) {
+        socket.emit('newReply', {
+          ticketId: selectedTicket._id,
+          reply: response.data.data
+        });
+      }
+
       toast.success('Réponse envoyée avec succès');
       setReplyContent('');
       setIsPrivate(false);
       setAttachments([]);
-      fetchTickets();
-      handleTicketClick(selectedTicket._id);
     } catch (error) {
       console.error('Error sending reply:', error);
       toast.error(error.response?.data?.message || 'Erreur lors de l\'envoi de la réponse');
@@ -649,15 +705,7 @@ const AdminTicketsContent = () => {
             {/* Formulaire de réponse */}
             <form onSubmit={handleReplySubmit} className="mt-auto">
               <div className="mb-3">
-                <label className="flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    className="form-checkbox rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500 mr-2"
-                    checked={isPrivate}
-                    onChange={(e) => setIsPrivate(e.target.checked)}
-                  />
-                  <span className="text-sm text-gray-300">Note privée (visible uniquement par les admins)</span>
-                </label>
+               
               </div>
               
               <textarea
@@ -893,4 +941,4 @@ const AdminTicketsContent = () => {
   );
 };
 
-export default AdminTicketsContent;
+export default AdminTicketsContent;/////

@@ -113,10 +113,6 @@ const TicketReplySchema = new mongoose.Schema({
       default: Date.now
     }
   }],
-  isPrivate: {
-    type: Boolean,
-    default: false // Les notes privées ne sont visibles que par les admins
-  },
   createdAt: {
     type: Date,
     default: Date.now

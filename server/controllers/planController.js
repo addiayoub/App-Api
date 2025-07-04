@@ -1,25 +1,27 @@
 const { default: axios } = require('axios');
-const { sendApiTokenEmail } = require('../config/email');
+const { sendApiTokenEmail, sendNewSubscriptionAdminEmail } = require('../config/email');
 const Plan = require('../models/Plan');
 const Subscription = require('../models/Subscription');
 const User = require('../models/User'); // Ajout de l'import User
 
 const planController = {
   getAllPlans: async (req, res) => {
-    try {
-      const plans = await Plan.find({ active: true }).sort({ monthlyPrice: 1 });
-      
-      // Pour chaque plan, récupérer les utilisateurs avec une souscription active
-      const plansWithUsers = await Promise.all(
-        plans.map(async (plan) => {
-          // Récupérer les souscriptions actives pour ce plan
-          const subscriptions = await Subscription.find({
-            planId: plan._id,
-            status: 'active'
-          }).populate('userId', 'name email avatar createdAt lastLogin');
-          
-          // Extraire les informations des utilisateurs
-          const users = subscriptions.map(sub => ({
+  try {
+    const plans = await Plan.find({ active: true }).sort({ monthlyPrice: 1 });
+    
+    // Pour chaque plan, récupérer les utilisateurs avec une souscription active
+    const plansWithUsers = await Promise.all(
+      plans.map(async (plan) => {
+        // Récupérer les souscriptions actives pour ce plan
+        const subscriptions = await Subscription.find({
+          planId: plan._id,
+          status: 'active'
+        }).populate('userId', 'name email avatar createdAt lastLogin');
+        
+        // Filtrer les souscriptions avec des utilisateurs valides et extraire les informations
+        const users = subscriptions
+          .filter(sub => sub.userId) // Filtrer les cas où userId est null
+          .map(sub => ({
             id: sub.userId._id,
             name: sub.userId.name,
             email: sub.userId.email,
@@ -33,94 +35,98 @@ const planController = {
             userCreatedAt: sub.userId.createdAt,
             lastLogin: sub.userId.lastLogin
           }));
-          
-          return {
-            ...plan.toObject(),
-            users: users,
-            totalUsers: users.length
-          };
-        })
-      );
-      
-      res.json({
-        success: true,
-        data: plansWithUsers
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
-    }
-  },
+        
+        return {
+          ...plan.toObject(),
+          users: users,
+          totalUsers: users.length
+        };
+      })
+    );
+    
+    res.json({
+      success: true,
+      data: plansWithUsers
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+},
 
   // Méthode pour récupérer un plan avec ses utilisateurs
-  getPlanWithUsers: async (req, res) => {
-    try {
-      const { id } = req.params;
-      const plan = await Plan.findById(id);
-      
-      if (!plan) {
-        return res.status(404).json({
-          success: false,
-          message: 'Plan not found'
-        });
-      }
-      
-      // Récupérer les souscriptions actives pour ce plan
-      const subscriptions = await Subscription.find({
-        planId: id,
-        status: 'active'
-      }).populate('userId', 'name email avatar createdAt lastLogin role');
-      
-      // Statistiques des utilisateurs
-      const userStats = {
-        total: subscriptions.length,
-        byBillingType: {
-          monthly: subscriptions.filter(sub => sub.billingType === 'monthly').length,
-          annual: subscriptions.filter(sub => sub.billingType === 'annual').length
-        },
-        totalRevenue: subscriptions.reduce((sum, sub) => sum + sub.price, 0),
-        monthlyRevenue: subscriptions
-          .filter(sub => sub.billingType === 'monthly')
-          .reduce((sum, sub) => sum + sub.price, 0),
-        annualRevenue: subscriptions
-          .filter(sub => sub.billingType === 'annual')
-          .reduce((sum, sub) => sum + sub.price, 0)
-      };
-      
-      const users = subscriptions.map(sub => ({
-        id: sub.userId._id,
-        name: sub.userId.name,
-        email: sub.userId.email,
-        avatar: sub.userId.avatar,
-        role: sub.userId.role,
-        subscriptionId: sub._id,
-        billingType: sub.billingType,
-        price: sub.price,
-        startDate: sub.startDate,
-        expiresAt: sub.expiresAt,
-        autoRenew: sub.autoRenew,
-        userCreatedAt: sub.userId.createdAt,
-        lastLogin: sub.userId.lastLogin,
-        daysUntilExpiration: Math.ceil((sub.expiresAt - new Date()) / (1000 * 60 * 60 * 24))
-      }));
-      
-      res.json({
-        success: true,
-        data: {
-          plan: plan,
-          users: users,
-          stats: userStats
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
+ // Méthode pour récupérer un plan avec ses utilisateurs
+getPlanWithUsers: async (req, res) => {
+  try {
+    const { id } = req.params;
+    const plan = await Plan.findById(id);
+    
+    if (!plan) {
+      return res.status(404).json({
         success: false,
-        message: error.message
+        message: 'Plan not found'
       });
     }
-  },
+    
+    // Récupérer les souscriptions actives pour ce plan
+    const subscriptions = await Subscription.find({
+      planId: id,
+      status: 'active'
+    }).populate('userId', 'name email avatar createdAt lastLogin role');
+    
+    // Filtrer les souscriptions avec des utilisateurs valides
+    const validSubscriptions = subscriptions.filter(sub => sub.userId);
+    
+    // Statistiques des utilisateurs
+    const userStats = {
+      total: validSubscriptions.length,
+      byBillingType: {
+        monthly: validSubscriptions.filter(sub => sub.billingType === 'monthly').length,
+        annual: validSubscriptions.filter(sub => sub.billingType === 'annual').length
+      },
+      totalRevenue: validSubscriptions.reduce((sum, sub) => sum + sub.price, 0),
+      monthlyRevenue: validSubscriptions
+        .filter(sub => sub.billingType === 'monthly')
+        .reduce((sum, sub) => sum + sub.price, 0),
+      annualRevenue: validSubscriptions
+        .filter(sub => sub.billingType === 'annual')
+        .reduce((sum, sub) => sum + sub.price, 0)
+    };
+    
+    const users = validSubscriptions.map(sub => ({
+      id: sub.userId._id,
+      name: sub.userId.name,
+      email: sub.userId.email,
+      avatar: sub.userId.avatar,
+      role: sub.userId.role,
+      subscriptionId: sub._id,
+      billingType: sub.billingType,
+      price: sub.price,
+      startDate: sub.startDate,
+      expiresAt: sub.expiresAt,
+      autoRenew: sub.autoRenew,
+      userCreatedAt: sub.userId.createdAt,
+      lastLogin: sub.userId.lastLogin,
+      daysUntilExpiration: Math.ceil((sub.expiresAt - new Date()) / (1000 * 60 * 60 * 24))
+    }));
+    
+    res.json({
+      success: true,
+      data: {
+        plan: plan,
+        users: users,
+        stats: userStats
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+},
 
   // Méthode pour récupérer les statistiques des plans
   getPlanStats: async (req, res) => {
@@ -378,55 +384,133 @@ generateNewUserToken: async (req, res) => {
     });
   }
 },
-  subscribeToPlan: async (req, res) => {
+subscribeToPlan: async (req, res) => {
+  try {
+    const { planId, billingType } = req.body;
+    const userId = req.user.id;
+
+    const plan = await Plan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plan not found'
+      });
+    }
+
+    const existingSubscription = await Subscription.findOne({
+      userId,
+      status: 'active'
+    });
+
+    if (existingSubscription) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already has an active subscription'
+      });
+    }
+
+    const price = billingType === 'annual' ? plan.annualPrice : plan.monthlyPrice;
+    const duration = billingType === 'annual' ? 365 : 30;
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + duration);
+
+    const subscription = new Subscription({
+      userId,
+      planId,
+      planName: plan.name,
+      billingType,
+      price,
+      expiresAt
+    });
+
+    await subscription.save();
+
+    // Générer le token API
     try {
-      const { planId, billingType } = req.body;
-      const userId = req.user.id;
+      const tokenResponse = await axios.post(
+        'https://apiservice.insightone.ma/api/tunnel/admin/create_user_token',
+        {
+          id: userId.toString(),
+          plan: plan.name,
+          expires_at: expiresAt.toISOString()
+        },
+        {
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${process.env.ADMIN_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
 
-      const plan = await Plan.findById(planId);
-      if (!plan) {
-        return res.status(404).json({
-          success: false,
-          message: 'Plan not found'
-        });
-      }
+      const { access_token, plan: apiPlan } = tokenResponse.data;
 
-      const existingSubscription = await Subscription.findOne({
-        userId,
-        status: 'active'
+      // Envoyer le token par email à l'utilisateur
+      await sendApiTokenEmail({
+        email: req.user.email,
+        name: req.user.name,
+        plan: apiPlan,
+        token: access_token,
+        expiresAt: expiresAt.toLocaleDateString('fr-FR')
       });
 
-      if (existingSubscription) {
-        return res.status(400).json({
-          success: false,
-          message: 'User already has an active subscription'
-        });
+      // Récupérer l'admin et envoyer l'email de notification
+      const adminUser = await User.findOne({ role: 'admin' });
+      if (adminUser) {
+        await sendNewSubscriptionAdminEmail(
+          adminUser,
+          req.user,
+          plan,
+          subscription
+        );
       }
 
-      const price = billingType === 'annual' ? plan.annualPrice : plan.monthlyPrice;
-      const duration = billingType === 'annual' ? 365 : 30;
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + duration);
+    } catch (apiError) {
+      console.error('Error generating API token:', apiError.message);
+      // Ne pas échouer la requête même si l'appel API échoue
+    }
 
-      const subscription = new Subscription({
-        userId,
-        planId,
-        planName: plan.name,
-        billingType,
-        price,
-        expiresAt
-      });
+    res.status(201).json({
+      success: true,
+      data: {
+        id: subscription._id,
+        plan: subscription.planName,
+        expires_at: subscription.expiresAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+},
+checkExpiredSubscriptions: async (req, res) => {
+  try {
+    const now = new Date();
+    const expiredSubscriptions = await Subscription.find({
+      expiresAt: { $lte: now },
+      status: 'active'
+    }).populate('userId').populate('planId');
 
-      await subscription.save();
+    for (const sub of expiredSubscriptions) {
+      // Mettre à jour le statut
+      sub.status = 'expired';
+      await sub.save();
 
-      // Générer le token API
+      // Envoyer email à l'utilisateur
+      await sendPlanExpiredUserEmail(sub.userId, sub.planId, sub);
+
+      // Envoyer email à l'admin
+      await sendPlanExpiredAdminEmail(sub.userId, sub.planId, sub);
+
+      // Révoquer le token API
       try {
-        const tokenResponse = await axios.post(
-          'https://apiservice.insightone.ma/api/tunnel/admin/create_user_token',
+        await axios.post(
+          'https://apiservice.insightone.ma/api/tunnel/admin/update_user_token',
           {
-            id: userId.toString(),
-            plan: plan.name,
-            expires_at: expiresAt.toISOString()
+            id: sub.userId._id.toString(),
+            status: 'revoked'
           },
           {
             headers: {
@@ -436,39 +520,22 @@ generateNewUserToken: async (req, res) => {
             }
           }
         );
-
-        const { access_token, plan: apiPlan } = tokenResponse.data;
-
-        // Envoyer le token par email
-        await sendApiTokenEmail({
-          email: req.user.email,
-          name: req.user.name,
-          plan: apiPlan,
-          token: access_token,
-          expiresAt: expiresAt.toLocaleDateString('fr-FR')
-        });
-
       } catch (apiError) {
-        console.error('Error generating API token:', apiError.message);
-        // Ne pas échouer la requête même si l'appel API échoue
+        console.error('Error revoking API token:', apiError.message);
       }
-
-      res.status(201).json({
-        success: true,
-        data: {
-          id: subscription._id,
-          plan: subscription.planName,
-          expires_at: subscription.expiresAt
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: error.message
-      });
     }
-  },
 
+    res.json({
+      success: true,
+      message: `Processed ${expiredSubscriptions.length} expired subscriptions`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+},
   getUserSubscription: async (req, res) => {
     try {
       const userId = req.user.id;

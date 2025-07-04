@@ -12,6 +12,7 @@ import ScrollToTop from './components/ScrollToTop';
 import './App.css';
 import AdminDashboard from './components/AdminDashboard/AdminDashboard';
 import axios from 'axios';
+import Documentation from './components/Documentation';
 
 const App = () => {
   const [loading, setLoading] = useState(true);
@@ -147,7 +148,15 @@ const App = () => {
         <Route path="/verify-email" element={<EmailVerificationModal />} />
         <Route path="/reset-password" element={<ResetPasswordForm />} />
         <Route path="/forgot-password" element={<ForgotPasswordForm />} />
-        
+<Route 
+  path="/docs" 
+  element={
+    <Documentation 
+      user={user}
+      onLogout={handleLogout}
+    />
+  } 
+/>
         {/* Route par défaut */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

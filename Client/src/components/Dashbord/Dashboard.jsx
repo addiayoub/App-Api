@@ -128,7 +128,6 @@ const Dashboard = ({ user: propUser, onLogout }) => {
     { name: 'Tickets', icon: Mail, key: 'tickets', color: 'text-orange-400' },
     { name: 'Documents', icon: FileText, key: 'docs', color: 'text-yellow-400' },
     { name: 'Abonnement', icon: CreditCard, key: 'subscription', color: 'text-cyan-400' },
-    { name: 'Paramètres', icon: Settings, key: 'settings', color: 'text-gray-400' },
   ];
 
   const handleLogout = () => {

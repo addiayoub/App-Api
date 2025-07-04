@@ -5,6 +5,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const Notification = require('../models/Notification');
+const { 
+  sendNewTicketEmail, 
+  sendTicketReplyEmail, 
+  sendTicketClosedEmail 
+} = require('../config/email');
 
 // Configuration Multer pour les fichiers
 const storage = multer.diskStorage({
@@ -45,12 +50,6 @@ const upload = multer({
 // @desc    Obtenir tous les tickets (utilisateur ou admin)
 // @route   GET /api/tickets
 // @access  Private
-// @desc    Obtenir tous les tickets (utilisateur ou admin)
-// @route   GET /api/tickets
-// @access  Private
-// @desc    Obtenir tous les tickets (utilisateur ou admin)
-// @route   GET /api/tickets
-// @access  Private
 exports.getTickets = async (req, res, next) => {
   try {
     const {
@@ -68,8 +67,6 @@ exports.getTickets = async (req, res, next) => {
     // Construire le filtre
     let filter = {};
     
-    // CORRECTION: Si ce n'est pas un admin, filtrer par utilisateur
-    // Les admins peuvent voir TOUS les tickets
     if (req.user.role !== 'admin') {
       filter.user = req.user.id;
     }
@@ -93,7 +90,7 @@ exports.getTickets = async (req, res, next) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Exécuter la requête pour obtenir les tickets
+    // Exécuter la requête
     const tickets = await Ticket.find(filter)
       .populate('user', 'name email avatar')
       .populate('assignedTo', 'name email avatar')
@@ -101,22 +98,17 @@ exports.getTickets = async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Obtenir le nombre total pour la pagination
     const total = await Ticket.countDocuments(filter);
 
-    // Obtenir TOUTES les réponses pour chaque ticket en une seule requête
+    // Obtenir les réponses
     const ticketIds = tickets.map(t => t._id);
-    
-    // CORRECTION: Les admins peuvent voir les réponses privées
     const repliesFilter = { ticket: { $in: ticketIds } };
-    if (req.user.role !== 'admin') {
-      repliesFilter.isPrivate = { $ne: true }; // Exclure les réponses privées pour les non-admins
-    }
 
     const allReplies = await TicketReply.find(repliesFilter)
-      .populate('user', 'name email avatar role');
+      .populate('user', 'name email avatar role')
+      .sort({ createdAt: 1 });
 
-    // Grouper les réponses par ticket
+    // Grouper les réponses
     const repliesByTicket = {};
     allReplies.forEach(reply => {
       if (!repliesByTicket[reply.ticket]) {
@@ -125,7 +117,7 @@ exports.getTickets = async (req, res, next) => {
       repliesByTicket[reply.ticket].push(reply);
     });
 
-    // Construire le résultat final avec les réponses incluses
+    // Construire le résultat final
     const ticketsWithReplies = tickets.map(ticket => {
       const ticketObj = ticket.toObject();
       return {
@@ -148,11 +140,11 @@ exports.getTickets = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Get tickets error:', error);
     next(error);
   }
 };
-// @desc    Obtenir un ticket par ID avec ses réponses
+
+// @desc    Obtenir un ticket par ID
 // @route   GET /api/tickets/:id
 // @access  Private
 exports.getTicket = async (req, res, next) => {
@@ -172,14 +164,7 @@ exports.getTicket = async (req, res, next) => {
     }
 
     // Obtenir les réponses
-    const repliesFilter = { ticket: ticket._id };
-    
-    // Si ce n'est pas un admin, exclure les notes privées
-    if (req.user.role !== 'admin') {
-      repliesFilter.isPrivate = { $ne: true };
-    }
-
-    const replies = await TicketReply.find(repliesFilter)
+    const replies = await TicketReply.find({ ticket: ticket._id })
       .populate('user', 'name email avatar role')
       .sort({ createdAt: 1 });
 
@@ -192,7 +177,6 @@ exports.getTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Get ticket error:', error);
     next(error);
   }
 };
@@ -232,38 +216,48 @@ exports.createTicket = async (req, res, next) => {
 
     const populatedTicket = await Ticket.findById(ticket._id)
       .populate('user', 'name email avatar')
-      .lean(); // Convertir en objet simple
+      .lean();
 
     // Ajouter les champs manquants
     populatedTicket.replies = [];
     populatedTicket.repliesCount = 0;
     populatedTicket.lastReply = null;
 
+    // Envoyer les emails de notification
+    const user = await User.findById(req.user.id);
+    await sendNewTicketEmail(user, ticket); // Email à l'utilisateur
+
+    const admins = await User.find({ role: 'admin' });
+    for (const admin of admins) {
+      await sendNewTicketEmail(admin, ticket, true); // Email aux admins
+    }
+
+    // Créer les notifications
+    await Notification.createNotification(
+      ticket.user, 
+      'Nouveau ticket créé', 
+      `Votre ticket "${ticket.subject}" a été créé avec succès.`,
+      'ticket',
+      ticket._id
+    );
+
+    for (const admin of admins) {
+      await Notification.createNotification(
+        admin._id,
+        'Nouveau ticket créé',
+        `Un nouveau ticket "${ticket.subject}" a été créé par ${req.user.name}.`,
+        'ticket',
+        ticket._id
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: 'Ticket créé avec succès',
       data: populatedTicket
     });
-await Notification.createNotification(
-  ticket.user, 
-  'Nouveau ticket créé', 
-  `Votre ticket "${ticket.subject}" a été créé avec succès.`,
-  'ticket',
-  ticket._id
-);
-const admins = await User.find({ role: 'admin' });
-for (const admin of admins) {
-  await Notification.createNotification(
-    admin._id,
-    'Nouveau ticket créé',
-    `Un nouveau ticket "${ticket.subject}" a été créé par ${req.user.name}.`,
-    'ticket',
-    ticket._id
-  );
-}
 
   } catch (error) {
-    console.error('Create ticket error:', error);
     next(error);
   }
 };
@@ -273,7 +267,7 @@ for (const admin of admins) {
 // @access  Private
 exports.replyToTicket = async (req, res, next) => {
   try {
-    const { content, isPrivate = false } = req.body;
+    const { content } = req.body;
     const ticketId = req.params.id;
 
     const ticket = await Ticket.findById(ticketId);
@@ -288,7 +282,6 @@ exports.replyToTicket = async (req, res, next) => {
     }
 
     const isAdminReply = req.user.role === 'admin';
-    const isPrivateNote = isPrivate && isAdminReply;
 
     // Traiter les fichiers joints
     let attachments = [];
@@ -308,7 +301,6 @@ exports.replyToTicket = async (req, res, next) => {
       user: req.user.id,
       content,
       isAdmin: isAdminReply,
-      isPrivate: isPrivateNote,
       attachments,
       createdAt: new Date()
     });
@@ -321,7 +313,7 @@ exports.replyToTicket = async (req, res, next) => {
 
     if (ticket.status === 'closed' && !isAdminReply) {
       updates.status = 'open';
-    } else if (ticket.status === 'open' && isAdminReply && !isPrivateNote) {
+    } else if (ticket.status === 'open' && isAdminReply) {
       updates.status = 'pending';
     }
 
@@ -331,6 +323,44 @@ exports.replyToTicket = async (req, res, next) => {
       .populate('user', 'name email avatar role')
       .lean();
 
+    // Envoyer les emails de notification
+    if (isAdminReply && ticket.user.toString() !== req.user.id.toString()) {
+      const ticketUser = await User.findById(ticket.user);
+      await sendTicketReplyEmail(ticketUser, ticket, reply, true); // Email à l'utilisateur
+    }
+    
+    // Si c'est une réponse utilisateur, notifier les admins
+    if (!isAdminReply) {
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        await sendTicketReplyEmail(admin, ticket, reply, false); // Email aux admins
+      }
+    }
+
+    // Créer des notifications
+    if (isAdminReply && ticket.user.toString() !== req.user.id.toString()) {
+      await Notification.createNotification(
+        ticket.user,
+        'Nouvelle réponse à votre ticket',
+        `Une réponse a été ajoutée à votre ticket "${ticket.subject}".`,
+        'ticket',
+        ticket._id
+      );
+    }
+    
+    if (!isAdminReply) {
+      const admins = await User.find({ role: 'admin' });
+      for (const admin of admins) {
+        await Notification.createNotification(
+          admin._id,
+          'Nouvelle réponse de l\'utilisateur',
+          `${req.user.name} a répondu au ticket "${ticket.subject}".`,
+          'ticket',
+          ticket._id
+        );
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Réponse ajoutée avec succès',
@@ -338,10 +368,10 @@ exports.replyToTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Reply to ticket error:', error);
     next(error);
   }
 };
+
 // @desc    Mettre à jour un ticket
 // @route   PUT /api/tickets/:id
 // @access  Private
@@ -373,10 +403,17 @@ exports.updateTicket = async (req, res, next) => {
       }
     });
 
-    // Si le ticket est fermé, enregistrer qui l'a fermé et quand
+    // Si le ticket est fermé, enregistrer qui l'a fermé
     if (updates.status === 'closed' || updates.status === 'solved') {
       updates.closedAt = Date.now();
       updates.closedBy = req.user.id;
+      
+      // Envoyer l'email de notification
+      const ticketUser = await User.findById(ticket.user);
+      await sendTicketClosedEmail(ticketUser, {
+        ...ticket.toObject(),
+        ...updates
+      });
     }
 
     const updatedTicket = await Ticket.findByIdAndUpdate(
@@ -394,7 +431,6 @@ exports.updateTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Update ticket error:', error);
     next(error);
   }
 };
@@ -426,6 +462,10 @@ exports.closeTicket = async (req, res, next) => {
       .populate('assignedTo', 'name email avatar')
       .populate('closedBy', 'name email');
 
+    // Envoyer l'email de notification
+    const ticketUser = await User.findById(ticket.user);
+    await sendTicketClosedEmail(ticketUser, updatedTicket);
+
     res.status(200).json({
       success: true,
       message: 'Ticket fermé avec succès',
@@ -433,7 +473,6 @@ exports.closeTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Close ticket error:', error);
     next(error);
   }
 };
@@ -453,7 +492,7 @@ exports.deleteTicket = async (req, res, next) => {
       return next(new ErrorResponse('Ticket non trouvé', 404));
     }
 
-    // Supprimer toutes les réponses associées
+    // Supprimer les réponses associées
     await TicketReply.deleteMany({ ticket: req.params.id });
 
     // Supprimer les fichiers joints
@@ -475,7 +514,6 @@ exports.deleteTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Delete ticket error:', error);
     next(error);
   }
 };
@@ -513,7 +551,6 @@ exports.getTicketStats = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Get ticket stats error:', error);
     next(error);
   }
 };
@@ -555,7 +592,6 @@ exports.assignTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Assign ticket error:', error);
     next(error);
   }
 };
@@ -586,7 +622,6 @@ exports.archiveTicket = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Archive ticket error:', error);
     next(error);
   }
 };
@@ -605,14 +640,10 @@ exports.downloadAttachment = async (req, res, next) => {
     } catch (error) {
       return next(new ErrorResponse('Fichier non trouvé', 404));
     }
-
-    // Vérifier que l'utilisateur a accès au fichier
-    // (vous pourriez vouloir ajouter une vérification plus stricte ici)
     
     res.download(filePath);
 
   } catch (error) {
-    console.error('Download attachment error:', error);
     next(error);
   }
 };

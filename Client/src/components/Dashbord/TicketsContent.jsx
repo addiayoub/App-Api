@@ -15,6 +15,7 @@ const TicketsContent = ({ user }) => {
   const [activeFilter, setActiveFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [attachments, setAttachments] = useState([]);
+  const [isPrivateReply, setIsPrivateReply] = useState(false); // Ajouté pour gérer les réponses privées
 
   const priorities = {
     high: { color: 'bg-red-500', icon: <AlertTriangle className="w-4 h-4" /> },
@@ -36,23 +37,22 @@ const TicketsContent = ({ user }) => {
     general: { color: 'bg-indigo-500', text: 'Général' }
   };
 
- const fetchTickets = async () => {
-  try {
-    setIsLoading(true);
-    const token = localStorage.getItem('token');
-    const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/tickets`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    // Les réponses sont maintenant incluses dans response.data.data
-    setTickets(response.data.data);
-    setFilteredTickets(response.data.data);
-    setIsLoading(false);
-  } catch (error) {
-    toast.error(error.response?.data?.message || 'Erreur de chargement des tickets');
-    setIsLoading(false);
-  }
-};
+  const fetchTickets = async () => {
+    try {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/tickets`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setTickets(response.data.data);
+      setFilteredTickets(response.data.data);
+      setIsLoading(false);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur de chargement des tickets');
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => { fetchTickets(); }, []);
 
@@ -68,142 +68,147 @@ const TicketsContent = ({ user }) => {
     setFilteredTickets(results);
   }, [searchTerm, activeFilter, tickets]);
 
-const handleCreateTicket = async (e) => {
-  e.preventDefault();
-  try {
-    const token = localStorage.getItem('token');
-    const formData = new FormData();
-    formData.append('subject', ticketForm.subject);
-    formData.append('message', ticketForm.message);
-    formData.append('priority', ticketForm.priority);
-    formData.append('category', ticketForm.category);
-    attachments.forEach(file => formData.append('attachments', file));
+  const handleCreateTicket = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('subject', ticketForm.subject);
+      formData.append('message', ticketForm.message);
+      formData.append('priority', ticketForm.priority);
+      formData.append('category', ticketForm.category);
+      attachments.forEach(file => formData.append('attachments', file));
 
-    const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/tickets`, formData, {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-    
-    // Créer un objet ticket complet avec toutes les propriétés nécessaires
-    const newTicketData = {
-      ...response.data.data, // Utilisez response.data.data pour accéder aux données
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar
-      },
-      replies: response.data.data.replies || [], // S'assurer que replies existe
-      repliesCount: response.data.data.repliesCount || 0,
-      lastReply: response.data.data.lastReply || null
-    };
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/tickets`, formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      const newTicketData = {
+        ...response.data.data,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar
+        },
+        replies: response.data.data.replies || [],
+        repliesCount: response.data.data.repliesCount || 0,
+        lastReply: response.data.data.lastReply || null
+      };
 
-    // Mettre à jour l'état en ajoutant le nouveau ticket au début du tableau
-    setTickets(prevTickets => [newTicketData, ...prevTickets]);
-    setFilteredTickets(prevTickets => [newTicketData, ...prevTickets]);
-    
-    setNewTicket(false);
-    setTicketForm({ subject: '', message: '', priority: 'medium', category: 'technical' });
-    setAttachments([]);
-    toast.success('Ticket créé avec succès!');
-  } catch (error) {
-    toast.error(error.response?.data?.message || 'Erreur lors de la création du ticket');
-  }
-};
+      setTickets(prevTickets => [newTicketData, ...prevTickets]);
+      setFilteredTickets(prevTickets => [newTicketData, ...prevTickets]);
+      
+      setNewTicket(false);
+      setTicketForm({ subject: '', message: '', priority: 'medium', category: 'technical' });
+      setAttachments([]);
+      toast.success('Ticket créé avec succès!');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors de la création du ticket');
+    }
+  };
+
   const handleSendReply = async () => {
-  if (!replyContent.trim() || !selectedTicket) return;
-  try {
-    const token = localStorage.getItem('token');
-    const formData = new FormData();
-    formData.append('content', replyContent);
-    attachments.forEach(file => formData.append('attachments', file));
+    if (!replyContent.trim() || !selectedTicket) return;
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('content', replyContent);
+      
+      // Envoyer isPrivate seulement si l'utilisateur est admin ET a coché la case
+      if (user.role === 'admin' && isPrivateReply) {
+        formData.append('isPrivate', 'true');
+      } else {
+        formData.append('isPrivate', 'false');
+      }
+      
+      attachments.forEach(file => formData.append('attachments', file));
 
-    const response = await axios.post(
-      `${import.meta.env.VITE_API_URL}/api/tickets/${selectedTicket._id}/reply`,
-      formData,
-      { headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data'
-      }}
-    );
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/tickets/${selectedTicket._id}/reply`,
+        formData,
+        { headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }}
+      );
 
-    // Créer la réponse formatée correctement
-    const newReply = {
-      _id: response.data.data._id, // Assurez-vous que l'API retourne l'ID
-      content: replyContent,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        role: user.role
-      },
-      isAdmin: user.role === 'admin',
-      createdAt: new Date().toISOString(),
-      attachments: response.data.data.attachments || [] // Inclure les pièces jointes si existantes
-    };
+      const newReply = {
+        _id: response.data.data._id,
+        content: replyContent,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatar,
+          role: user.role
+        },
+        isAdmin: user.role === 'admin',
+        isPrivate: user.role === 'admin' && isPrivateReply, // Marquer comme privé seulement si admin ET coché
+        createdAt: new Date().toISOString(),
+        attachments: response.data.data.attachments || []
+      };
 
-    // Mettre à jour le ticket sélectionné
-    const updatedTicket = { 
-      ...selectedTicket, 
-      replies: [...(selectedTicket.replies || []), newReply],
-      repliesCount: (selectedTicket.replies?.length || 0) + 1,
-      lastReply: newReply,
-      lastReplyAt: new Date().toISOString()
-    };
+      const updatedTicket = { 
+        ...selectedTicket, 
+        replies: [...(selectedTicket.replies || []), newReply],
+        repliesCount: (selectedTicket.replies?.length || 0) + 1,
+        lastReply: newReply,
+        lastReplyAt: new Date().toISOString()
+      };
 
-    // Mettre à jour la liste des tickets
-    const updatedTickets = tickets.map(t => 
-      t._id === selectedTicket._id ? updatedTicket : t
-    );
+      const updatedTickets = tickets.map(t => 
+        t._id === selectedTicket._id ? updatedTicket : t
+      );
 
-    setSelectedTicket(updatedTicket);
-    setTickets(updatedTickets);
-    setFilteredTickets(updatedTickets);
-    setReplyContent('');
-    setAttachments([]);
-    toast.success('Réponse envoyée avec succès!');
-  } catch (error) {
-    toast.error(error.response?.data?.message || 'Erreur lors de l\'envoi de la réponse');
-  }
-};
+      setSelectedTicket(updatedTicket);
+      setTickets(updatedTickets);
+      setFilteredTickets(updatedTickets);
+      setReplyContent('');
+      setAttachments([]);
+      setIsPrivateReply(false); // Reset la checkbox
+      toast.success('Réponse envoyée avec succès!');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors de l\'envoi de la réponse');
+    }
+  };
 
   const handleCloseTicket = async (ticketId) => {
-  try {
-    const token = localStorage.getItem('token');
-    const response = await axios.put(
-      `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/close`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/close`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-    // Mettre à jour le ticket dans la liste
-    const updatedTickets = tickets.map(ticket => 
-      ticket._id === ticketId ? { 
-        ...ticket, 
-        status: 'closed',
-        closedAt: new Date().toISOString()
-      } : ticket
-    );
+      const updatedTickets = tickets.map(ticket => 
+        ticket._id === ticketId ? { 
+          ...ticket, 
+          status: 'closed',
+          closedAt: new Date().toISOString()
+        } : ticket
+      );
 
-    // Mettre à jour le ticket sélectionné s'il s'agit du même ticket
-    if (selectedTicket && selectedTicket._id === ticketId) {
-      setSelectedTicket({
-        ...selectedTicket,
-        status: 'closed',
-        closedAt: new Date().toISOString()
-      });
+      if (selectedTicket && selectedTicket._id === ticketId) {
+        setSelectedTicket({
+          ...selectedTicket,
+          status: 'closed',
+          closedAt: new Date().toISOString()
+        });
+      }
+
+      setTickets(updatedTickets);
+      setFilteredTickets(updatedTickets);
+      toast.success('Ticket fermé avec succès!');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Erreur lors de la fermeture du ticket');
     }
+  };
 
-    setTickets(updatedTickets);
-    setFilteredTickets(updatedTickets);
-    toast.success('Ticket fermé avec succès!');
-  } catch (error) {
-    toast.error(error.response?.data?.message || 'Erreur lors de la fermeture du ticket');
-  }
-};
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     if (files.length + attachments.length > 5) {
@@ -219,26 +224,41 @@ const handleCreateTicket = async (e) => {
     setAttachments(newAttachments);
   };
 
-const formatDate = (dateString) => {
-  if (!dateString) return 'Date inconnue';
-  
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Date invalide';
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date inconnue';
     
-    const options = { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric', 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    };
-    return date.toLocaleDateString('fr-FR', options);
-  } catch (error) {
-    console.error('Erreur de formatage de date:', error);
-    return 'Date invalide';
-  }
-};
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Date invalide';
+      
+      const options = { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      };
+      return date.toLocaleDateString('fr-FR', options);
+    } catch (error) {
+      console.error('Erreur de formatage de date:', error);
+      return 'Date invalide';
+    }
+  };
+
+  // Fonction pour déterminer si une réponse doit être visible
+  const shouldShowReply = (reply) => {
+    const isAdmin = user?.role === 'admin';
+    const isUserReply = reply.user?._id === user?._id;
+    const isPrivateReply = reply.isPrivate;
+    
+    // Si c'est une réponse privée, seuls les admins et l'auteur peuvent la voir
+    if (isPrivateReply) {
+      return isAdmin || isUserReply;
+    }
+    
+    // Toutes les autres réponses sont visibles (y compris les réponses publiques des admins)
+    return true;
+  };
 
   return (
     <div className="space-y-6">
@@ -561,72 +581,81 @@ const formatDate = (dateString) => {
               <div className="mt-8 space-y-6">
                 <h3 className="text-lg font-semibold text-white flex items-center">
                   <MessageSquare className="w-5 h-5 mr-2" />
-                  Réponses ({selectedTicket.replies?.length || 0})
+                  Réponses ({selectedTicket.replies?.filter(shouldShowReply).length || 0})
                 </h3>
                 
-                {selectedTicket.replies?.length > 0 ? (
-                  <div className="space-y-4">
-                 {selectedTicket.replies?.map((reply) => (
-  <motion.div
-    key={reply._id || reply.createdAt} // Utilisez un identifiant unique
-    initial={{ opacity: 0, x: -10 }}
-    animate={{ opacity: 1, x: 0 }}
-    className="bg-gray-700/30 rounded-lg p-4 border border-gray-600"
-  >
-    <div className="flex items-start space-x-3">
-      <div className="flex-shrink-0">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          reply.isAdmin ? 'bg-purple-600' : 'bg-blue-600'
-        }`}>
-          <span className="text-white font-semibold">
-            {reply.user?.name?.charAt(0)?.toUpperCase() || (reply.isAdmin ? 'A' : 'U')}
-          </span>
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h4 className="font-medium text-white">
-              {reply.user?.name || (reply.isAdmin ? 'Support Technique' : 'Utilisateur')}
-            </h4>
-            {reply.isAdmin && (
-              <span className="px-2 py-0.5 rounded-full text-xs bg-purple-600 text-white">
-                Équipe
+             {selectedTicket.replies?.filter(shouldShowReply).length > 0 ? (
+  <div className="space-y-4">
+    {selectedTicket.replies?.filter(shouldShowReply).map((reply) => (
+      <motion.div
+        key={reply._id || reply.createdAt}
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        className={`bg-gray-700/30 rounded-lg p-4 border ${
+          reply.isPrivate ? 'border-purple-500/50 bg-purple-900/10' : 'border-gray-600'
+        }`}
+      >
+        <div className="flex items-start space-x-3">
+          <div className="flex-shrink-0">
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+              reply.isAdmin ? 'bg-purple-600' : 'bg-blue-600'
+            }`}>
+              <span className="text-white font-semibold">
+                {reply.user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </span>
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <h4 className="font-medium text-white">
+                  {reply.user?.name || (reply.isAdmin ? 'Support' : 'Utilisateur')}
+                </h4>
+                {reply.isAdmin && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-purple-600 text-white">
+                    Équipe
+                  </span>
+                )}
+                {reply.isPrivate && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-yellow-600 text-white">
+                    Privé
+                  </span>
+                )}
+              </div>
+              <span className="text-xs text-gray-400">
+                {formatDate(reply.createdAt)}
+              </span>
+            </div>
+            <p className="mt-1 text-gray-300 whitespace-pre-line">
+              {reply.content}
+            </p>
+            {reply.attachments?.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {reply.attachments.map((file, index) => (
+                  <a 
+                    key={index}
+                    href={`${import.meta.env.VITE_API_URL}/api/tickets/download/${file.filename}`}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 text-sm"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    <span>{file.originalName}</span>
+                  </a>
+                ))}
+              </div>
             )}
           </div>
-          <span className="text-xs text-gray-400">{formatDate(reply.createdAt)}</span>
         </div>
-        <p className="mt-1 text-gray-300 whitespace-pre-line">
-          {reply.content || reply.message} {/* Support both field names */}
-        </p>
-        {reply.attachments?.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {reply.attachments.map((file, index) => (
-              <a 
-                key={index}
-                href={`${import.meta.env.VITE_API_URL}/api/tickets/download/${file.filename || file.name}`}
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-blue-400 hover:text-blue-300 text-sm"
-              >
-                <Paperclip className="w-4 h-4" />
-                <span>{file.originalName || file.name}</span>
-              </a>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  </motion.div>
-))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageSquare className="w-12 h-12 mx-auto mb-4" />
-                    <p>Aucune réponse pour ce ticket</p>
-                  </div>
-                )}
+      </motion.div>
+    ))}
+  </div>
+) : (
+  <div className="text-center py-8 text-gray-500">
+    <MessageSquare className="w-12 h-12 mx-auto mb-4" />
+    <p>Aucune réponse pour ce ticket</p>
+  </div>
+)}
 
                 {selectedTicket.status !== 'closed' && selectedTicket.status !== 'solved' && (
                   <motion.div
@@ -709,4 +738,4 @@ const formatDate = (dateString) => {
   );
 };
 
-export default TicketsContent;
+export default TicketsContent;///

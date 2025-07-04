@@ -220,15 +220,7 @@ const DashboardContent = ({ user, stats, subscription, apiKeys, securityLogs }) 
         <h2 className="text-2xl font-bold text-white">
           Bienvenue, <span className="text-blue-400">{user?.name || 'Utilisateur'}</span>!
         </h2>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-2 rounded-lg text-sm font-medium"
-        >
-          <Rocket className="w-4 h-4" />
-          <span>Nouvelle fonctionnalité</span>
-          <Sparkles className="w-4 h-4" />
-        </motion.button>
+        
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
