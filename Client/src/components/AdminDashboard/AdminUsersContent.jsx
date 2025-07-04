@@ -12,7 +12,7 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import axios from 'axios';
 import moment from 'moment';
-import UserStats from './UserStats.JSX';
+import UserStats from './UserStats';
 import UserFilters from './UserFilters';
 import UserTable from './UserTable';
 
