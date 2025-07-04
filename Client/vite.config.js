@@ -4,11 +4,18 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  server: {
-    host: true, 
-  },
-  plugins: [react(),
-        tailwindcss(),
+ plugins: [react(),
+      tailwindcss()
 
-  ],
+ ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://apiservice.insightone.ma',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
+  }
 })
